@@ -1,6 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import DashboardNavbar from "@/components/dashboard-navbar";
+import { getPharmacyId } from "@/lib/auth";
+import { CheckCircle2, Loader2, MapPin, Navigation } from "lucide-react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 type LocationData = {
   latitude: number;
@@ -11,10 +16,68 @@ export default function LocationPage() {
   const [location, setLocation] = useState<LocationData | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const saveLocation = async (
+    pharmacyId: number,
+    newLocation: LocationData,
+  ) => {
+    setSaving(true);
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/pharmacies/${pharmacyId}/location`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            latitude: newLocation.latitude,
+            longitude: newLocation.longitude,
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          Array.isArray(data?.message)
+            ? data.message.join(", ")
+            : data?.message || "Failed to save pharmacy location.",
+        );
+      }
+
+      setMessage("Your pharmacy location was detected and saved successfully.");
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to save pharmacy location.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const getLocation = () => {
+    const pharmacyId = getPharmacyId();
+
+    if (!pharmacyId) {
+      setError(
+        "Your pharmacy account could not be identified. Please log in again.",
+      );
+      return;
+    }
+
     setLoading(true);
     setMessage("");
     setError("");
@@ -26,15 +89,16 @@ export default function LocationPage() {
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const newLocation = {
+      async (position) => {
+        const newLocation: LocationData = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         };
 
         setLocation(newLocation);
-        setMessage("Your pharmacy location was detected successfully.");
         setLoading(false);
+
+        await saveLocation(pharmacyId, newLocation);
       },
       (locationError) => {
         console.error(locationError);
@@ -54,67 +118,93 @@ export default function LocationPage() {
   };
 
   return (
-    <main className="min-h-screen p-6 md:p-10">
-      <div className="mx-auto max-w-5xl">
+    <main className="min-h-screen bg-slate-50">
+      <DashboardNavbar />
+
+      <div className="mx-auto max-w-5xl px-6 py-8 md:px-10">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">Pharmacy Location</h1>
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-900 text-white">
+              <MapPin className="h-6 w-6" />
+            </div>
 
-          <p className="mt-2 text-muted-foreground">
-            Automatically detect your pharmacy location using your device.
-          </p>
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900">
+                Pharmacy Location
+              </h1>
+
+              <p className="mt-1 text-slate-500">
+                Set the exact location patients will use to find your pharmacy.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Location Card */}
-        <div className="rounded-xl border bg-card p-6 shadow-sm">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold">Current Location</h2>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">
+              Current Pharmacy Location
+            </h2>
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              Click the button below to automatically detect your current
-              location.
+            <p className="mt-2 text-sm text-slate-500">
+              Stand at your pharmacy and use the button below to capture its
+              exact GPS coordinates.
             </p>
           </div>
 
-          {/* Button */}
+          {/* Detect and Save */}
           <button
             type="button"
             onClick={getLocation}
-            disabled={loading}
-            className="rounded-md bg-primary px-5 py-2.5 font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={loading || saving}
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Detecting location..." : "Detect My Location"}
+            {loading || saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Navigation className="h-4 w-4" />
+            )}
+
+            {loading
+              ? "Detecting location..."
+              : saving
+                ? "Saving location..."
+                : "Detect & Save Location"}
           </button>
 
           {/* Success */}
           {message && (
-            <div className="mt-6 rounded-lg border p-4">
-              <p className="font-medium">{message}</p>
+            <div className="mt-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+
+              <p className="text-sm font-medium text-emerald-700">{message}</p>
             </div>
           )}
 
           {/* Error */}
           {error && (
-            <div className="mt-6 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
-              <p className="text-sm">{error}</p>
+            <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
+              <p className="text-sm font-medium text-red-700">{error}</p>
             </div>
           )}
 
           {/* Coordinates */}
           {location && (
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border p-5">
-                <p className="text-sm text-muted-foreground">Latitude</p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-sm text-slate-500">Latitude</p>
 
-                <p className="mt-2 text-xl font-semibold">
+                <p className="mt-2 text-xl font-bold text-slate-900">
                   {location.latitude.toFixed(6)}
                 </p>
               </div>
 
-              <div className="rounded-lg border p-5">
-                <p className="text-sm text-muted-foreground">Longitude</p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-sm text-slate-500">Longitude</p>
 
-                <p className="mt-2 text-xl font-semibold">
+                <p className="mt-2 text-xl font-bold text-slate-900">
                   {location.longitude.toFixed(6)}
                 </p>
               </div>
@@ -124,9 +214,15 @@ export default function LocationPage() {
 
         {/* Map */}
         {location && (
-          <div className="mt-6 overflow-hidden rounded-xl border bg-card">
-            <div className="border-b p-5">
-              <h2 className="text-xl font-semibold">Location Map</h2>
+          <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-5">
+              <h2 className="text-xl font-bold text-slate-900">
+                Pharmacy Map Location
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Verify that the detected location is correct.
+              </p>
             </div>
 
             <div className="p-5">
@@ -134,27 +230,37 @@ export default function LocationPage() {
                 href={`https://www.google.com/maps?q=${location.latitude},${location.longitude}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block rounded-md border px-5 py-2.5 font-medium hover:bg-muted"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
-                Open Location in Google Maps
+                <MapPin className="h-4 w-4" />
+                Open in Google Maps
               </a>
             </div>
           </div>
         )}
 
         {/* Information */}
-        <div className="mt-6 rounded-xl border p-5">
-          <h2 className="font-semibold">How location detection works</h2>
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="font-bold text-slate-900">
+            Why your location matters
+          </h2>
 
-          <p className="mt-2 text-sm text-muted-foreground">
-            SmartPharma uses your browser&apos;s location permission to
-            determine the pharmacy&apos;s current latitude and longitude.
-          </p>
+          <div className="mt-4 space-y-3 text-sm text-slate-600">
+            <p>
+              Patients searching for medicine will be able to see your pharmacy
+              address and location.
+            </p>
 
-          <p className="mt-2 text-sm text-muted-foreground">
-            Make sure location access is enabled when your browser asks for
-            permission.
-          </p>
+            <p>
+              Your coordinates also allow patients to open your pharmacy
+              location in Google Maps.
+            </p>
+
+            <p>
+              For the most accurate result, use this feature while physically at
+              your pharmacy.
+            </p>
+          </div>
         </div>
       </div>
     </main>

@@ -1,6 +1,16 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MinLength,
+} from "class-validator";
 
 export class RegisterPharmacyDto {
+  // =========================
+  // Pharmacy Information
+  // =========================
+
   @IsString()
   pharmacyName: string;
 
@@ -10,8 +20,66 @@ export class RegisterPharmacyDto {
   @IsString()
   phone: string;
 
+  @IsOptional()
+  @IsEmail()
+  pharmacyEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  openingHours?: string;
+
+  // =========================
+  // Pharmacy Location
+  // =========================
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  // =========================
+  // Business Verification
+  // =========================
+
+  @IsString()
+  tinNumber: string;
+
+  @IsOptional()
+  @IsString()
+  businessRegistration?: string;
+
+  @IsOptional()
+  @IsString()
+  businessLicense?: string;
+
+  @IsOptional()
+  @IsString()
+  pharmacyLicense?: string;
+
+  @IsOptional()
+  @IsString()
+  pharmacyPhoto?: string;
+
+  // =========================
+  // Owner Identity
+  // =========================
+
   @IsString()
   ownerName: string;
+
+  @IsString()
+  ownerIdNumber: string;
+
+  @IsOptional()
+  @IsString()
+  ownerIdDocument?: string;
+
+  // =========================
+  // Owner Account
+  // =========================
 
   @IsEmail()
   email: string;

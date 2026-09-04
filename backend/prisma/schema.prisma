@@ -7,7 +7,168 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole @default(PHARMACY_STAFF)
+  pharmacyId   Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  pharmacy Pharmacy? @relation(fields: [pharmacyId], references: [id])
+}
+
+model Pharmacy {
+  id           Int     @id @default(autoincrement())
+  name         String
+  address      String
+  phone        String?
+  email        String?
+  latitude     Float?
+  longitude    Float?
+  openingHours String?
+
+  // Business verification
+  tinNumber            String? @unique
+  businessRegistration String?
+  businessLicense      String?
+  pharmacyLicense      String?
+  pharmacyPhoto        String?
+
+  // Owner identity verification
+  ownerIdNumber   String?
+  ownerIdDocument String?
+
+  // Verification status
+  verificationStatus VerificationStatus @default(PENDING)
+  verificationReason String?
+  verifiedAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inventory    Inventory[]
+  searches     MedicineSearch[]
+  payments     Payment[]
+  sales        Sale[]
+  subscription Subscription?
+  users        User[]
+}
+
+model Medicine {
+  id          Int      @id @default(autoincrement())
+  name        String
+  genericName String?
+  category    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  inventory Inventory[]
+  searches  MedicineSearch[]
+  saleItems SaleItem[]
+
+  @@index([name])
+  @@index([genericName])
+}
+
+model Inventory {
+  id          Int         @id @default(autoincrement())
+  pharmacyId  Int
+  medicineId  Int
+  quantity    Int         @default(0)
+  price       Float
+  stockStatus StockStatus @default(AVAILABLE)
+  section     String?
+  shelf       String?
+  row         String?
+  updatedAt   DateTime    @updatedAt
+
+  medicine Medicine @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@unique([pharmacyId, medicineId])
+}
+
+model Sale {
+  id          Int      @id @default(autoincrement())
+  pharmacyId  Int
+  totalAmount Float
+  createdAt   DateTime @default(now())
+
+  pharmacy Pharmacy   @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  items    SaleItem[]
+
+  @@index([pharmacyId])
+  @@index([createdAt])
+}
+
+model SaleItem {
+  id         Int   @id @default(autoincrement())
+  saleId     Int
+  medicineId Int
+  quantity   Int
+  unitPrice  Float
+  totalPrice Float
+
+  medicine Medicine @relation(fields: [medicineId], references: [id])
+  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([medicineId])
+}
+
+model MedicineSearch {
+  id         Int      @id @default(autoincrement())
+  pharmacyId Int
+  medicineId Int
+  createdAt  DateTime @default(now())
+
+  medicine Medicine @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([medicineId])
+  @@index([pharmacyId])
+  @@index([createdAt])
+}
+
+model Subscription {
+  id          Int                @id @default(autoincrement())
+  pharmacyId  Int                @unique
+  plan        SubscriptionPlan
+  status      SubscriptionStatus @default(PENDING)
+  startDate   DateTime?
+  renewalDate DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id                 Int              @id @default(autoincrement())
+  pharmacyId         Int
+  plan               SubscriptionPlan
+  amount             Float
+  transactionId      String           @unique
+  status             PaymentStatus    @default(PENDING)
+  screenshotName     String?
+  screenshotMimeType String?
+  screenshotSize     Int?
+  verifiedAt         DateTime?
+  rejectedAt         DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId])
+  @@index([status])
+  @@index([createdAt])
+}
+
 enum UserRole {
+  ADMIN
   PHARMACY_OWNER
   PHARMACY_STAFF
 }
@@ -22,6 +183,7 @@ enum SubscriptionPlan {
   BASIC
   STANDARD
   PROFESSIONAL
+  ENTERPRISE
 }
 
 enum SubscriptionStatus {
@@ -31,142 +193,14 @@ enum SubscriptionStatus {
   PENDING
 }
 
-model User {
-  id           Int      @id @default(autoincrement())
-  email        String   @unique
-  passwordHash String
-  name         String
-  role         UserRole @default(PHARMACY_STAFF)
-
-  pharmacyId Int?
-  pharmacy   Pharmacy? @relation(fields: [pharmacyId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
 }
 
-model Pharmacy {
-  id      Int     @id @default(autoincrement())
-  name    String
-  address String
-  phone   String?
-  email   String?
-
-  latitude  Float?
-  longitude Float?
-
-  openingHours String?
-
-  users        User[]
-  inventory    Inventory[]
-  sales        Sale[]
-  searches     MedicineSearch[]
-  subscription Subscription?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Medicine {
-  id          Int     @id @default(autoincrement())
-  name        String
-  genericName String?
-  category    String?
-
-  inventory Inventory[]
-  saleItems SaleItem[]
-  searches  MedicineSearch[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([name])
-  @@index([genericName])
-}
-
-model Inventory {
-  id Int @id @default(autoincrement())
-
-  pharmacyId Int
-  medicineId Int
-
-  quantity Int   @default(0)
-  price    Float
-
-  stockStatus StockStatus @default(AVAILABLE)
-
-  section String?
-  shelf   String?
-  row     String?
-
-  updatedAt DateTime @updatedAt
-
-  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
-  medicine Medicine @relation(fields: [medicineId], references: [id], onDelete: Cascade)
-
-  @@unique([pharmacyId, medicineId])
-}
-
-model Sale {
-  id Int @id @default(autoincrement())
-
-  pharmacyId  Int
-  totalAmount Float
-
-  createdAt DateTime @default(now())
-
-  pharmacy Pharmacy   @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
-  items    SaleItem[]
-
-  @@index([pharmacyId])
-  @@index([createdAt])
-}
-
-model SaleItem {
-  id Int @id @default(autoincrement())
-
-  saleId     Int
-  medicineId Int
-
-  quantity   Int
-  unitPrice  Float
-  totalPrice Float
-
-  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  medicine Medicine @relation(fields: [medicineId], references: [id])
-
-  @@index([medicineId])
-}
-
-model MedicineSearch {
-  id Int @id @default(autoincrement())
-
-  pharmacyId Int
-  medicineId Int
-
-  createdAt DateTime @default(now())
-
-  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
-  medicine Medicine @relation(fields: [medicineId], references: [id], onDelete: Cascade)
-
-  @@index([medicineId])
-  @@index([pharmacyId])
-  @@index([createdAt])
-}
-
-model Subscription {
-  id Int @id @default(autoincrement())
-
-  pharmacyId Int @unique
-
-  plan   SubscriptionPlan
-  status SubscriptionStatus @default(PENDING)
-
-  startDate   DateTime?
-  renewalDate DateTime?
-
-  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

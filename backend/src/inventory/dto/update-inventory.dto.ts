@@ -3,13 +3,15 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
-} from 'class-validator';
+} from "class-validator";
 
 export class UpdateInventoryDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(10)
   quantity?: number;
 
   @IsOptional()

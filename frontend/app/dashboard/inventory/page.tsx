@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 
+import DashboardNavbar from "@/components/dashboard-navbar";
+import { getPharmacyId } from "@/lib/auth";
+
 type Medicine = {
   id: number;
   name: string;
@@ -17,58 +20,61 @@ type InventoryItem = {
   medicine?: Medicine;
 };
 
+const API_URL = "http://localhost:4000";
+
 export default function InventoryPage() {
+  const [pharmacyId] = useState<number | null>(() => getPharmacyId());
+
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Get pharmacyId directly from the browser URL.
-  const getPharmacyId = () => {
-    if (typeof window === "undefined") {
-      return 1;
-    }
-
-    const value = new URLSearchParams(window.location.search).get("pharmacyId");
-
-    const id = Number(value);
-
-    return id && !Number.isNaN(id) ? id : 1;
-  };
-
   useEffect(() => {
     let cancelled = false;
 
-    async function loadData() {
-      const pharmacyId = getPharmacyId();
+    if (pharmacyId === null) {
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setError("No pharmacy is associated with this login.");
+          setLoading(false);
+        }
+      });
 
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    async function loadData() {
       try {
         setLoading(true);
         setError("");
 
         const [inventoryResponse, medicinesResponse] = await Promise.all([
-          fetch(`http://localhost:3000/dashboard/${pharmacyId}`, {
+          fetch(`${API_URL}/dashboard/${pharmacyId}`, {
             cache: "no-store",
           }),
 
-          fetch("http://localhost:3000/medicines/search", {
+          fetch(`${API_URL}/medicines`, {
             cache: "no-store",
           }),
         ]);
 
         if (!inventoryResponse.ok) {
-          throw new Error("Failed to load inventory");
+          throw new Error("Failed to load inventory.");
         }
 
         if (!medicinesResponse.ok) {
-          throw new Error("Failed to load medicines");
+          throw new Error("Failed to load medicines.");
         }
 
         const inventoryData = await inventoryResponse.json();
-
         const medicinesData = await medicinesResponse.json();
 
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         setInventory(
           Array.isArray(inventoryData?.inventory)
@@ -84,7 +90,9 @@ export default function InventoryPage() {
               : [],
         );
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         console.error(err);
 
@@ -103,13 +111,13 @@ export default function InventoryPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pharmacyId]);
 
   const medicineMap = new Map(
     medicines.map((medicine) => [medicine.id, medicine]),
   );
 
-  const getMedicineName = (item: InventoryItem) => {
+  function getMedicineName(item: InventoryItem) {
     if (item.medicine?.name) {
       return item.medicine.name;
     }
@@ -117,7 +125,7 @@ export default function InventoryPage() {
     return (
       medicineMap.get(item.medicineId)?.name ?? `Medicine #${item.medicineId}`
     );
-  };
+  }
 
   const totalQuantity = inventory.reduce(
     (total, item) => total + Number(item.quantity || 0),
@@ -125,18 +133,20 @@ export default function InventoryPage() {
   );
 
   return (
-    <main className="min-h-screen p-6 md:p-10">
-      <div className="mx-auto max-w-7xl">
-        {/* Header */}
+    <main className="min-h-screen bg-background">
+      <DashboardNavbar />
+
+      <div className="mx-auto w-full max-w-7xl px-6 py-10">
+        {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">Inventory</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Inventory</h1>
 
           <p className="mt-2 text-muted-foreground">
             Manage your pharmacy medicine inventory.
           </p>
 
           <p className="mt-1 text-sm text-muted-foreground">
-            Pharmacy ID: {getPharmacyId()}
+            Pharmacy ID: {pharmacyId ?? "Not available"}
           </p>
         </div>
 
@@ -185,6 +195,10 @@ export default function InventoryPage() {
           <div className="overflow-hidden rounded-xl border bg-card">
             <div className="border-b p-5">
               <h2 className="text-xl font-semibold">Medicine Inventory</h2>
+
+              <p className="mt-1 text-sm text-muted-foreground">
+                Current medicine stock and pricing.
+              </p>
             </div>
 
             <div className="overflow-x-auto">
