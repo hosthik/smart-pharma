@@ -17,7 +17,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
 import { InventoryService } from "./inventory.service.js";
 import { CreateInventoryDto } from "./dto/create-inventory.dto.js";
 import { UpdateInventoryDto } from "./dto/update-inventory.dto.js";
-
+import { PharmacySubscriptionGuard } from "../auth/guards/pharmacy-subscription.guard.js";
 type AuthenticatedRequest = Request & {
   user?: {
     sub: number;
@@ -31,7 +31,10 @@ type AuthenticatedRequest = Request & {
 };
 
 @Controller("inventory")
-@UseGuards(JwtAuthGuard)
+@UseGuards(
+  JwtAuthGuard,
+  PharmacySubscriptionGuard,
+)
 export class InventoryController {
   constructor(
     private readonly inventoryService: InventoryService,
