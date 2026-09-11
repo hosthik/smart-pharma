@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import DashboardNavbar from "@/components/dashboard-navbar";
+
+import PharmacyNavigation from "@/components/pharmacy/PharmacyNavigation";
+import { getPharmacyId, getToken } from "@/lib/auth";
+
 type Medicine = {
   id: number;
   name: string;
@@ -31,9 +34,9 @@ type MedicineSearchResult = Medicine & {
 
 const API_URL = "http://localhost:4000";
 
-const PHARMACY_ID = 1;
-
 export default function MedicinesPage() {
+  const [pharmacyId] = useState<number | null>(() => getPharmacyId());
+
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [searchResults, setSearchResults] = useState<MedicineSearchResult[]>(
     [],
@@ -56,60 +59,88 @@ export default function MedicinesPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
 
   const loadMedicines = useCallback(async () => {
-    try {
-      setError("");
+    const token = getToken();
 
-      const response = await fetch(`${API_URL}/medicines`);
+    if (!token) {
+      throw new Error("Authentication token is required.");
+    }
 
-      if (!response.ok) {
-        throw new Error("Failed to load medicines");
+    const response = await fetch(`${API_URL}/medicines`, {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      let message = "Failed to load medicines.";
+
+      try {
+        const errorData = await response.json();
+
+        if (typeof errorData?.message === "string") {
+          message = errorData.message;
+        } else if (Array.isArray(errorData?.message)) {
+          message = errorData.message.join(", ");
+        }
+      } catch {
+        // Ignore invalid error response.
       }
 
-      const data: Medicine[] = await response.json();
+      if (response.status === 401) {
+        message =
+          "Your authentication session is invalid or expired. Please log in again.";
+      }
 
-      setMedicines(data);
-    } catch (error) {
-      console.error(error);
-
-      setError("Unable to load medicines.");
-    } finally {
-      setLoading(false);
+      throw new Error(message);
     }
+
+    const data = await response.json();
+
+    if (!Array.isArray(data)) {
+      throw new Error("Invalid medicines response from server.");
+    }
+
+    return data as Medicine[];
   }, []);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadInitialMedicines() {
+    async function initialize() {
       try {
-        const response = await fetch(`${API_URL}/medicines`);
+        const data = await loadMedicines();
 
-        if (!response.ok) {
-          throw new Error("Failed to load medicines");
+        if (cancelled) {
+          return;
         }
 
-        const data: Medicine[] = await response.json();
-
-        if (!cancelled) {
-          setMedicines(data);
-          setLoading(false);
+        setMedicines(data);
+      } catch (err) {
+        if (cancelled) {
+          return;
         }
-      } catch (error) {
-        console.error(error);
 
+        console.error("Medicine loading error:", err);
+
+        setError(
+          err instanceof Error ? err.message : "Unable to load medicines.",
+        );
+      } finally {
         if (!cancelled) {
-          setError("Unable to load medicines.");
           setLoading(false);
         }
       }
     }
 
-    void loadInitialMedicines();
+    void initialize();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadMedicines]);
 
   async function handleSearch(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -126,26 +157,44 @@ export default function MedicinesPage() {
       setSearching(true);
       setSearchError("");
 
+      const token = getToken();
+
+      if (!token) {
+        throw new Error("Authentication token is required.");
+      }
+
+      if (pharmacyId === null) {
+        throw new Error("No pharmacy is associated with this login.");
+      }
+
       const response = await fetch(
         `${API_URL}/medicines/search?q=${encodeURIComponent(
           query,
-        )}&pharmacyId=${PHARMACY_ID}`,
+        )}&pharmacyId=${pharmacyId}`,
+        {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        },
       );
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Unable to search medicines.");
+        throw new Error(data?.message || "Unable to search medicines.");
       }
 
-      setSearchResults(data);
-    } catch (error) {
-      console.error(error);
+      setSearchResults(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Medicine search error:", err);
 
       setSearchResults([]);
 
       setSearchError(
-        error instanceof Error ? error.message : "Unable to search medicines.",
+        err instanceof Error ? err.message : "Unable to search medicines.",
       );
     } finally {
       setSearching(false);
@@ -189,6 +238,12 @@ export default function MedicinesPage() {
       setSaving(true);
       setError("");
 
+      const token = getToken();
+
+      if (!token) {
+        throw new Error("Authentication token is required.");
+      }
+
       const body = {
         name: name.trim(),
         genericName: genericName.trim() || undefined,
@@ -204,6 +259,7 @@ export default function MedicinesPage() {
       const response = await fetch(url, {
         method,
         headers: {
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -212,18 +268,17 @@ export default function MedicinesPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Unable to save medicine");
+        throw new Error(data?.message || "Unable to save medicine.");
       }
 
       clearForm();
 
-      await loadMedicines();
-    } catch (error) {
-      console.error(error);
+      const updatedMedicines = await loadMedicines();
+      setMedicines(updatedMedicines);
+    } catch (err) {
+      console.error("Medicine save error:", err);
 
-      setError(
-        error instanceof Error ? error.message : "Unable to save medicine.",
-      );
+      setError(err instanceof Error ? err.message : "Unable to save medicine.");
     } finally {
       setSaving(false);
     }
@@ -242,26 +297,37 @@ export default function MedicinesPage() {
       setDeletingId(id);
       setError("");
 
+      const token = getToken();
+
+      if (!token) {
+        throw new Error("Authentication token is required.");
+      }
+
       const response = await fetch(`${API_URL}/medicines/${id}`, {
         method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Unable to delete medicine");
+        throw new Error(data?.message || "Unable to delete medicine.");
       }
 
       if (editingId === id) {
         clearForm();
       }
 
-      await loadMedicines();
-    } catch (error) {
-      console.error(error);
+      const updatedMedicines = await loadMedicines();
+      setMedicines(updatedMedicines);
+    } catch (err) {
+      console.error("Medicine delete error:", err);
 
       setError(
-        error instanceof Error ? error.message : "Unable to delete medicine.",
+        err instanceof Error ? err.message : "Unable to delete medicine.",
       );
     } finally {
       setDeletingId(null);
@@ -269,33 +335,51 @@ export default function MedicinesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <DashboardNavbar />
-      <header className="border-b bg-background">
-        <div className="mx-auto max-w-7xl px-6 py-6">
-          <h1 className="text-2xl font-bold">Medicine Management</h1>
+    <main className="min-h-screen bg-slate-50">
+      <PharmacyNavigation activePath="/dashboard/medicines" />
 
-          <p className="mt-1 text-sm text-muted-foreground">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-7xl px-6 py-8">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Pharmacy Management
+          </p>
+
+          <h1 className="mt-2 font-serif text-4xl font-semibold tracking-tight text-slate-950">
+            Medicine Management
+          </h1>
+
+          <p className="mt-2 max-w-3xl text-slate-600">
             Search medicines, check pharmacy stock, and manage the SmartPharma
-            catalog.
+            medicine catalog.
+          </p>
+
+          <p className="mt-2 text-sm text-slate-500">
+            Pharmacy ID: {pharmacyId ?? "Not available"}
           </p>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        {/* General Error */}
         {error && (
-          <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
+
+            {error.toLowerCase().includes("authentication") && (
+              <p className="mt-1 text-red-600">
+                Please log out and log in again to refresh your authentication
+                session.
+              </p>
+            )}
           </div>
         )}
 
-        {/* Medicine Search */}
-        <section className="rounded-xl border bg-background p-6 shadow-sm">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6">
-            <h2 className="text-xl font-semibold">Search Medicines</h2>
+            <h2 className="font-serif text-2xl font-semibold text-slate-950">
+              Search Medicines
+            </h2>
 
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-slate-500">
               Search by medicine name, generic name, or category. Searches are
               recorded for demand analytics.
             </p>
@@ -309,13 +393,13 @@ export default function MedicinesPage() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="e.g. Paracetamol"
-              className="min-w-0 flex-1 rounded-lg border bg-background px-4 py-3 outline-none focus:ring-2"
+              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
             />
 
             <button
               type="submit"
               disabled={searching}
-              className="rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-slate-950 px-6 py-3 font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {searching ? "Searching..." : "Search"}
             </button>
@@ -324,7 +408,7 @@ export default function MedicinesPage() {
               <button
                 type="button"
                 onClick={clearSearch}
-                className="rounded-lg border px-6 py-3 font-medium hover:bg-muted"
+                className="rounded-xl border border-slate-200 bg-white px-6 py-3 font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 Clear
               </button>
@@ -332,7 +416,7 @@ export default function MedicinesPage() {
           </form>
 
           {searchError && (
-            <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               {searchError}
             </div>
           )}
@@ -341,7 +425,7 @@ export default function MedicinesPage() {
             !searching &&
             !searchError &&
             searchResults.length === 0 && (
-              <div className="mt-6 rounded-lg border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+              <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
                 No medicines found for &quot;
                 {searchQuery.trim()}&quot;.
               </div>
@@ -350,46 +434,63 @@ export default function MedicinesPage() {
           {searchResults.length > 0 && (
             <div className="mt-6 space-y-4">
               {searchResults.map((medicine) => (
-                <div key={medicine.id} className="rounded-lg border p-5">
+                <div
+                  key={medicine.id}
+                  className="rounded-xl border border-slate-200 p-5"
+                >
                   <div className="flex flex-col justify-between gap-3 md:flex-row">
                     <div>
-                      <h3 className="text-lg font-semibold">{medicine.name}</h3>
+                      <h3 className="font-serif text-xl font-semibold text-slate-950">
+                        {medicine.name}
+                      </h3>
 
-                      <div className="mt-1 text-sm text-muted-foreground">
+                      <div className="mt-1 text-sm text-slate-500">
                         Generic: {medicine.genericName || "—"}
                       </div>
 
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-sm text-slate-500">
                         Category: {medicine.category || "—"}
                       </div>
                     </div>
 
-                    <div className="text-sm font-medium">
+                    <div className="text-sm font-medium text-slate-600">
                       {medicine.pharmacies.length} pharmacy
                       {medicine.pharmacies.length === 1 ? "" : "ies"}
                     </div>
                   </div>
 
                   {medicine.pharmacies.length === 0 ? (
-                    <div className="mt-4 rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
+                    <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
                       No pharmacy currently has this medicine in inventory.
                     </div>
                   ) : (
                     <div className="mt-4 overflow-x-auto">
                       <table className="w-full min-w-[700px]">
-                        <thead>
-                          <tr className="border-b text-left text-sm">
-                            <th className="px-3 py-3 font-medium">Pharmacy</th>
+                        <thead className="border-b border-slate-200 text-left text-sm">
+                          <tr>
+                            <th className="px-3 py-3 font-semibold text-slate-700">
+                              Pharmacy
+                            </th>
 
-                            <th className="px-3 py-3 font-medium">Address</th>
+                            <th className="px-3 py-3 font-semibold text-slate-700">
+                              Address
+                            </th>
 
-                            <th className="px-3 py-3 font-medium">Stock</th>
+                            <th className="px-3 py-3 font-semibold text-slate-700">
+                              Stock
+                            </th>
 
-                            <th className="px-3 py-3 font-medium">Status</th>
+                            <th className="px-3 py-3 font-semibold text-slate-700">
+                              Status
+                            </th>
 
-                            <th className="px-3 py-3 font-medium">Price</th>
+                            <th className="px-3 py-3 font-semibold text-slate-700">
+                              Price
+                            </th>
 
-                            <th className="px-3 py-3 font-medium">Location</th>
+                            <th className="px-3 py-3 font-semibold text-slate-700">
+                              Location
+                            </th>
                           </tr>
                         </thead>
 
@@ -397,25 +498,27 @@ export default function MedicinesPage() {
                           {medicine.pharmacies.map((pharmacy) => (
                             <tr
                               key={`${medicine.id}-${pharmacy.pharmacyId}`}
-                              className="border-b last:border-0"
+                              className="border-b border-slate-100 last:border-0"
                             >
-                              <td className="px-3 py-4 font-medium">
+                              <td className="px-3 py-4 font-medium text-slate-950">
                                 {pharmacy.pharmacyName}
                               </td>
 
-                              <td className="px-3 py-4 text-sm text-muted-foreground">
+                              <td className="px-3 py-4 text-sm text-slate-500">
                                 {pharmacy.address}
                               </td>
 
-                              <td className="px-3 py-4">{pharmacy.quantity}</td>
+                              <td className="px-3 py-4 text-slate-700">
+                                {pharmacy.quantity}
+                              </td>
 
                               <td className="px-3 py-4">
                                 <span
                                   className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
                                     pharmacy.stockStatus === "AVAILABLE"
-                                      ? "bg-green-100 text-green-700"
+                                      ? "bg-emerald-100 text-emerald-700"
                                       : pharmacy.stockStatus === "LOW_STOCK"
-                                        ? "bg-yellow-100 text-yellow-700"
+                                        ? "bg-amber-100 text-amber-700"
                                         : "bg-red-100 text-red-700"
                                   }`}
                                 >
@@ -423,11 +526,11 @@ export default function MedicinesPage() {
                                 </span>
                               </td>
 
-                              <td className="px-3 py-4 font-medium">
-                                {pharmacy.price.toFixed(2)} ETB
+                              <td className="px-3 py-4 font-medium text-slate-700">
+                                {Number(pharmacy.price).toFixed(2)} ETB
                               </td>
 
-                              <td className="px-3 py-4 text-sm text-muted-foreground">
+                              <td className="px-3 py-4 text-sm text-slate-500">
                                 {pharmacy.latitude !== null &&
                                 pharmacy.longitude !== null
                                   ? `${pharmacy.latitude.toFixed(
@@ -447,14 +550,13 @@ export default function MedicinesPage() {
           )}
         </section>
 
-        {/* Add / Edit Form */}
-        <section className="mt-8 rounded-xl border bg-background p-6 shadow-sm">
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6">
-            <h2 className="text-xl font-semibold">
+            <h2 className="font-serif text-2xl font-semibold text-slate-950">
               {editingId ? "Edit Medicine" : "Add Medicine"}
             </h2>
 
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-slate-500">
               {editingId
                 ? "Update the medicine information."
                 : "Add a new medicine to the catalog."}
@@ -465,7 +567,7 @@ export default function MedicinesPage() {
             <div>
               <label
                 htmlFor="medicine-name"
-                className="mb-2 block text-sm font-medium"
+                className="mb-2 block text-sm font-medium text-slate-700"
               >
                 Medicine Name
               </label>
@@ -475,14 +577,14 @@ export default function MedicinesPage() {
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="e.g. Paracetamol"
-                className="w-full rounded-lg border bg-background px-4 py-3 outline-none focus:ring-2"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               />
             </div>
 
             <div>
               <label
                 htmlFor="generic-name"
-                className="mb-2 block text-sm font-medium"
+                className="mb-2 block text-sm font-medium text-slate-700"
               >
                 Generic Name
               </label>
@@ -492,14 +594,14 @@ export default function MedicinesPage() {
                 value={genericName}
                 onChange={(event) => setGenericName(event.target.value)}
                 placeholder="e.g. Acetaminophen"
-                className="w-full rounded-lg border bg-background px-4 py-3 outline-none focus:ring-2"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               />
             </div>
 
             <div>
               <label
                 htmlFor="medicine-category"
-                className="mb-2 block text-sm font-medium"
+                className="mb-2 block text-sm font-medium text-slate-700"
               >
                 Category
               </label>
@@ -509,7 +611,7 @@ export default function MedicinesPage() {
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
                 placeholder="e.g. Pain Relief"
-                className="w-full rounded-lg border bg-background px-4 py-3 outline-none focus:ring-2"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               />
             </div>
 
@@ -517,7 +619,7 @@ export default function MedicinesPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl bg-slate-950 px-6 py-3 font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {saving
                   ? "Saving..."
@@ -531,7 +633,7 @@ export default function MedicinesPage() {
                   type="button"
                   onClick={clearForm}
                   disabled={saving}
-                  className="rounded-lg border px-6 py-3 font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-xl border border-slate-200 bg-white px-6 py-3 font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -540,37 +642,44 @@ export default function MedicinesPage() {
           </form>
         </section>
 
-        {/* Catalog */}
-        <section className="mt-8 rounded-xl border bg-background shadow-sm">
-          <div className="border-b p-6">
-            <h2 className="text-xl font-semibold">Medicine Catalog</h2>
+        <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 p-6">
+            <h2 className="font-serif text-2xl font-semibold text-slate-950">
+              Medicine Catalog
+            </h2>
 
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-slate-500">
               {medicines.length} medicine
               {medicines.length === 1 ? "" : "s"} in catalog
             </p>
           </div>
 
           {loading ? (
-            <div className="p-8 text-center text-muted-foreground">
+            <div className="p-8 text-center text-slate-500">
               Loading medicines...
             </div>
           ) : medicines.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
+            <div className="p-8 text-center text-slate-500">
               No medicines found.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead>
-                  <tr className="border-b text-left text-sm">
-                    <th className="px-6 py-4 font-medium">Name</th>
+                <thead className="border-b border-slate-200 bg-slate-50 text-left text-sm">
+                  <tr>
+                    <th className="px-6 py-4 font-semibold text-slate-700">
+                      Name
+                    </th>
 
-                    <th className="px-6 py-4 font-medium">Generic Name</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">
+                      Generic Name
+                    </th>
 
-                    <th className="px-6 py-4 font-medium">Category</th>
+                    <th className="px-6 py-4 font-semibold text-slate-700">
+                      Category
+                    </th>
 
-                    <th className="px-6 py-4 text-right font-medium">
+                    <th className="px-6 py-4 text-right font-semibold text-slate-700">
                       Actions
                     </th>
                   </tr>
@@ -578,14 +687,19 @@ export default function MedicinesPage() {
 
                 <tbody>
                   {medicines.map((medicine) => (
-                    <tr key={medicine.id} className="border-b last:border-0">
-                      <td className="px-6 py-4 font-medium">{medicine.name}</td>
+                    <tr
+                      key={medicine.id}
+                      className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                    >
+                      <td className="px-6 py-4 font-medium text-slate-950">
+                        {medicine.name}
+                      </td>
 
-                      <td className="px-6 py-4 text-muted-foreground">
+                      <td className="px-6 py-4 text-slate-500">
                         {medicine.genericName || "—"}
                       </td>
 
-                      <td className="px-6 py-4 text-muted-foreground">
+                      <td className="px-6 py-4 text-slate-500">
                         {medicine.category || "—"}
                       </td>
 
@@ -594,7 +708,7 @@ export default function MedicinesPage() {
                           <button
                             type="button"
                             onClick={() => startEdit(medicine)}
-                            className="rounded-md border px-3 py-2 text-sm hover:bg-muted"
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                           >
                             Edit
                           </button>
@@ -603,7 +717,7 @@ export default function MedicinesPage() {
                             type="button"
                             onClick={() => void handleDelete(medicine.id)}
                             disabled={deletingId === medicine.id}
-                            className="rounded-md border border-destructive/30 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {deletingId === medicine.id
                               ? "Deleting..."

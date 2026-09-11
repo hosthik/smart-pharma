@@ -1,71 +1,69 @@
-export async function searchMedicines(query: string) {
-  const search = query.trim();
-
-  if (!search) {
-    return [];
-  }
-
-  const response = await fetch(
-    `/api/medicines/search?q=${encodeURIComponent(search)}`,
-    {
-      method: "GET",
-      cache: "no-store",
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      Array.isArray(data?.message)
-        ? data.message.join(", ")
-        : data?.message ||
-            `Search failed: ${response.status}`,
-    );
-  }
-
-  return data;
-}
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://127.0.0.1:4000";
-
-export async function loginPharmacy(
-  email: string,
-  password: string,
+export async function getAnalytics(
+pharmacyId: number,
+startDate?: string,
+endDate?: string,
 ) {
-  const response = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email,
-      password,
-    }),
-  });
+const params = new URLSearchParams();
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Login failed");
-  }
-
-  return data;
+if (startDate) {
+params.set("startDate", startDate);
 }
 
-export async function getDashboard(pharmacyId: number) {
-  const response = await fetch(
-    `${API_URL}/dashboard/${pharmacyId}`,
-    {
-      cache: "no-store",
-    },
-  );
+if (endDate) {
+params.set("endDate", endDate);
+}
 
-  if (!response.ok) {
-    throw new Error("Unable to load dashboard");
-  }
+const queryString = params.toString();
 
-  return response.json();
+const response = await fetch(
+`/api/analytics/${pharmacyId}${
+      queryString ? `?${queryString}` : ""
+    }`,
+{
+method: "GET",
+cache: "no-store",
+},
+);
+
+const data = await response.json();
+
+if (!response.ok) {
+throw new Error(
+Array.isArray(data?.message)
+? data.message.join(", ")
+: data?.message ||
+`Analytics request failed: ${response.status}`,
+);
+}
+
+return data;
+}
+
+export async function searchMedicines(query: string) {
+const search = query.trim();
+
+if (!search) {
+return [];
+}
+
+const response = await fetch(
+`/api/medicines/search?q=${encodeURIComponent(search)}`,
+{
+method: "GET",
+cache: "no-store",
+},
+);
+
+const data = await response.json();
+
+if (!response.ok) {
+throw new Error(
+Array.isArray(data?.message)
+? data.message.join(", ")
+: data?.message ||
+`Search failed: ${response.status}`,
+);
+}
+
+return data;
 }

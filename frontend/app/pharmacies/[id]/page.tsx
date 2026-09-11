@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowLeft,
   Clock,
   Mail,
@@ -12,14 +13,11 @@ import {
   PackageCheck,
   Phone,
   Pill,
-  AlertTriangle,
-  XCircle,
-  Home as HomeIcon,
   Search,
-  Info,
-  MessageCircle,
+  XCircle,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+
+import PatientNavigation from "@/components/patient/PatientNavigation";
 
 const API_URL = "http://localhost:4000";
 
@@ -75,125 +73,14 @@ function getStockStatus(status: InventoryItem["stockStatus"]) {
         className: "bg-red-100 text-red-700",
         icon: XCircle,
       };
+
+    default:
+      return {
+        label: "Unknown",
+        className: "bg-slate-100 text-slate-600",
+        icon: AlertTriangle,
+      };
   }
-}
-
-function PublicNavbar() {
-  return (
-    <nav className="border-b bg-white">
-      <div className="mx-auto flex min-h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex shrink-0 items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-sm font-bold text-white">
-            SP
-          </div>
-
-          <div className="hidden leading-none sm:block">
-            <p className="text-lg font-bold tracking-tight text-slate-900">
-              SmartPharma
-            </p>
-
-            <p className="mt-1 text-[11px] text-slate-500">
-              Medicine Discovery
-            </p>
-          </div>
-        </Link>
-
-        <div className="hidden items-center gap-2 md:flex">
-          <Link
-            href="/"
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
-          >
-            <HomeIcon className="h-4 w-4" />
-            Home
-          </Link>
-
-          <Link
-            href="/find-medicine"
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
-          >
-            <Search className="h-4 w-4" />
-            Find Medicine
-          </Link>
-
-          <Link
-            href="/pharmacies"
-            className="flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-          >
-            <MapPin className="h-4 w-4" />
-            Pharmacies
-          </Link>
-
-          <Link
-            href="/about"
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
-          >
-            <Info className="h-4 w-4" />
-            About
-          </Link>
-
-          <Link
-            href="/contact"
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
-          >
-            <MessageCircle className="h-4 w-4" />
-            Contact
-          </Link>
-
-          <Link href="/pharmacy/login" className="ml-2">
-            <Button>Pharmacy Login</Button>
-          </Link>
-        </div>
-
-        <Link href="/pharmacy/login" className="md:hidden">
-          <Button size="sm">Pharmacy Login</Button>
-        </Link>
-      </div>
-
-      <div className="border-t md:hidden">
-        <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-2 sm:px-6">
-          <Link
-            href="/"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
-          >
-            <HomeIcon className="h-4 w-4" />
-            Home
-          </Link>
-
-          <Link
-            href="/find-medicine"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
-          >
-            <Search className="h-4 w-4" />
-            Find Medicine
-          </Link>
-
-          <Link
-            href="/pharmacies"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white"
-          >
-            <MapPin className="h-4 w-4" />
-            Pharmacies
-          </Link>
-
-          <Link
-            href="/about"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
-          >
-            <Info className="h-4 w-4" />
-            About
-          </Link>
-
-          <Link
-            href="/contact"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
-          >
-            <MessageCircle className="h-4 w-4" />
-            Contact
-          </Link>
-        </div>
-      </div>
-    </nav>
-  );
 }
 
 export default function PharmacyDetailsPage() {
@@ -203,6 +90,7 @@ export default function PharmacyDetailsPage() {
   const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     async function loadPharmacy() {
@@ -219,7 +107,7 @@ export default function PharmacyDetailsPage() {
         const data = await response.json();
         setPharmacy(data);
       } catch (err) {
-        console.error(err);
+        console.error("Failed to load pharmacy:", err);
         setError("Unable to load this pharmacy. Please try again.");
       } finally {
         setLoading(false);
@@ -231,15 +119,41 @@ export default function PharmacyDetailsPage() {
     }
   }, [pharmacyId]);
 
+  const filteredInventory = useMemo(() => {
+    if (!pharmacy) {
+      return [];
+    }
+
+    const query = search.trim().toLowerCase();
+
+    if (!query) {
+      return pharmacy.inventory;
+    }
+
+    return pharmacy.inventory.filter((item) => {
+      const medicineName = item.medicine.name?.toLowerCase() || "";
+      const genericName = item.medicine.genericName?.toLowerCase() || "";
+      const category = item.medicine.category?.toLowerCase() || "";
+
+      return (
+        medicineName.includes(query) ||
+        genericName.includes(query) ||
+        category.includes(query)
+      );
+    });
+  }, [pharmacy, search]);
+
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-50">
-        <PublicNavbar />
+        <PatientNavigation activePath="/pharmacies" />
 
         <div className="mx-auto max-w-7xl px-6 py-10">
           <div className="animate-pulse space-y-6">
             <div className="h-8 w-48 rounded bg-slate-200" />
+
             <div className="h-56 rounded-2xl bg-white" />
+
             <div className="h-80 rounded-2xl bg-white" />
           </div>
         </div>
@@ -250,7 +164,7 @@ export default function PharmacyDetailsPage() {
   if (error || !pharmacy) {
     return (
       <main className="min-h-screen bg-slate-50">
-        <PublicNavbar />
+        <PatientNavigation activePath="/pharmacies" />
 
         <div className="mx-auto max-w-2xl px-6 py-20 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
@@ -267,7 +181,7 @@ export default function PharmacyDetailsPage() {
 
           <Link
             href="/pharmacies"
-            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Pharmacies
@@ -294,12 +208,13 @@ export default function PharmacyDetailsPage() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      <PublicNavbar />
+      <PatientNavigation activePath="/pharmacies" />
 
       <section className="mx-auto max-w-7xl px-6 py-8 sm:py-10">
+        {/* Back Button */}
         <Link
           href="/pharmacies"
-          className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900"
+          className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Pharmacies
@@ -325,6 +240,7 @@ export default function PharmacyDetailsPage() {
 
                   <div className="mt-3 flex items-start gap-2 text-sm text-slate-300">
                     <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+
                     <span>{pharmacy.address}</span>
                   </div>
                 </div>
@@ -335,7 +251,7 @@ export default function PharmacyDetailsPage() {
                   href={`https://www.google.com/maps?q=${pharmacy.latitude},${pharmacy.longitude}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-100"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
                 >
                   <Navigation className="h-4 w-4" />
                   Get Directions
@@ -346,35 +262,59 @@ export default function PharmacyDetailsPage() {
 
           {/* Contact Information */}
           <div className="grid gap-4 p-6 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Phone */}
             <div className="rounded-xl bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-slate-500">
                 <Phone className="h-4 w-4" />
+
                 <span className="text-xs font-medium uppercase tracking-wide">
                   Phone
                 </span>
               </div>
 
-              <p className="mt-2 font-semibold text-slate-900">
-                {pharmacy.phone || "Not provided"}
-              </p>
+              {pharmacy.phone ? (
+                <a
+                  href={`tel:${pharmacy.phone}`}
+                  className="mt-2 block font-semibold text-slate-900 hover:underline"
+                >
+                  {pharmacy.phone}
+                </a>
+              ) : (
+                <p className="mt-2 font-semibold text-slate-900">
+                  Not provided
+                </p>
+              )}
             </div>
 
+            {/* Email */}
             <div className="rounded-xl bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-slate-500">
                 <Mail className="h-4 w-4" />
+
                 <span className="text-xs font-medium uppercase tracking-wide">
                   Email
                 </span>
               </div>
 
-              <p className="mt-2 break-all font-semibold text-slate-900">
-                {pharmacy.email || "Not provided"}
-              </p>
+              {pharmacy.email ? (
+                <a
+                  href={`mailto:${pharmacy.email}`}
+                  className="mt-2 block break-all font-semibold text-slate-900 hover:underline"
+                >
+                  {pharmacy.email}
+                </a>
+              ) : (
+                <p className="mt-2 font-semibold text-slate-900">
+                  Not provided
+                </p>
+              )}
             </div>
 
+            {/* Opening Hours */}
             <div className="rounded-xl bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-slate-500">
                 <Clock className="h-4 w-4" />
+
                 <span className="text-xs font-medium uppercase tracking-wide">
                   Opening Hours
                 </span>
@@ -385,9 +325,11 @@ export default function PharmacyDetailsPage() {
               </p>
             </div>
 
+            {/* Medicine Count */}
             <div className="rounded-xl bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-slate-500">
                 <Pill className="h-4 w-4" />
+
                 <span className="text-xs font-medium uppercase tracking-wide">
                   Medicines
                 </span>
@@ -404,7 +346,7 @@ export default function PharmacyDetailsPage() {
             <div className="border-t px-6 py-5 sm:px-8">
               <a
                 href={`tel:${pharmacy.phone}`}
-                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
               >
                 <Phone className="h-4 w-4" />
                 Contact Pharmacy
@@ -426,9 +368,11 @@ export default function PharmacyDetailsPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
+            {/* Available */}
             <div className="rounded-xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-slate-500">Available</p>
+
                 <PackageCheck className="h-5 w-5 text-green-600" />
               </div>
 
@@ -439,9 +383,11 @@ export default function PharmacyDetailsPage() {
               <p className="mt-1 text-xs text-slate-500">medicines in stock</p>
             </div>
 
+            {/* Low Stock */}
             <div className="rounded-xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-slate-500">Low Stock</p>
+
                 <AlertTriangle className="h-5 w-5 text-yellow-600" />
               </div>
 
@@ -454,6 +400,7 @@ export default function PharmacyDetailsPage() {
               </p>
             </div>
 
+            {/* Out of Stock */}
             <div className="rounded-xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-slate-500">
@@ -486,6 +433,31 @@ export default function PharmacyDetailsPage() {
             </h2>
           </div>
 
+          {/* Search */}
+          {pharmacy.inventory.length > 0 && (
+            <div className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search medicine, generic name, or category..."
+                  className="w-full rounded-xl border bg-white py-3.5 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                />
+              </div>
+
+              {search.trim() && (
+                <p className="mt-2 text-sm text-slate-500">
+                  Showing {filteredInventory.length} of{" "}
+                  {pharmacy.inventory.length} medicines
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* No medicines */}
           {pharmacy.inventory.length === 0 ? (
             <div className="rounded-2xl border border-dashed bg-white p-10 text-center">
               <Pill className="mx-auto h-8 w-8 text-slate-400" />
@@ -498,17 +470,40 @@ export default function PharmacyDetailsPage() {
                 This pharmacy has not added any medicines yet.
               </p>
             </div>
+          ) : filteredInventory.length === 0 ? (
+            /* Search returned no results */
+            <div className="rounded-2xl border border-dashed bg-white p-10 text-center">
+              <Search className="mx-auto h-8 w-8 text-slate-400" />
+
+              <h3 className="mt-4 font-semibold text-slate-900">
+                No medicines found
+              </h3>
+
+              <p className="mt-2 text-sm text-slate-500">
+                No medicine matches &quot;{search}&quot; in this pharmacy.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Clear Search
+              </button>
+            </div>
           ) : (
+            /* Medicine Cards */
             <div className="grid gap-5 lg:grid-cols-2">
-              {pharmacy.inventory.map((item) => {
+              {filteredInventory.map((item) => {
                 const stock = getStockStatus(item.stockStatus);
                 const StockIcon = stock.icon;
 
                 return (
                   <article
                     key={item.id}
-                    className="rounded-2xl border bg-white p-6 shadow-sm"
+                    className="rounded-2xl border bg-white p-6 shadow-sm transition hover:shadow-md"
                   >
+                    {/* Medicine Header */}
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-3">
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100">
@@ -534,14 +529,17 @@ export default function PharmacyDetailsPage() {
                         </div>
                       </div>
 
+                      {/* Stock Status */}
                       <span
                         className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${stock.className}`}
                       >
                         <StockIcon className="h-3.5 w-3.5" />
+
                         {stock.label}
                       </span>
                     </div>
 
+                    {/* Price & Quantity */}
                     <div className="mt-6 grid grid-cols-2 gap-3">
                       <div className="rounded-xl bg-slate-50 p-4">
                         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -549,7 +547,7 @@ export default function PharmacyDetailsPage() {
                         </p>
 
                         <p className="mt-1 text-xl font-bold text-slate-900">
-                          {item.price.toFixed(2)} ETB
+                          {Number(item.price).toFixed(2)} ETB
                         </p>
                       </div>
 
@@ -566,6 +564,7 @@ export default function PharmacyDetailsPage() {
                       </div>
                     </div>
 
+                    {/* Medicine Location */}
                     {(item.section || item.shelf || item.row) && (
                       <div className="mt-4 rounded-xl border bg-slate-50 p-4">
                         <div className="flex items-center gap-2">
@@ -578,7 +577,9 @@ export default function PharmacyDetailsPage() {
 
                         <p className="mt-2 text-sm text-slate-600">
                           {item.section && `Section ${item.section}`}
+
                           {item.shelf && ` • Shelf ${item.shelf}`}
+
                           {item.row && ` • Row ${item.row}`}
                         </p>
                       </div>
@@ -609,11 +610,11 @@ export default function PharmacyDetailsPage() {
               Pharmacies
             </Link>
 
-            <Link href="/about" className="hover:text-slate-900">
+            <Link href="/about-us" className="hover:text-slate-900">
               About
             </Link>
 
-            <Link href="/contact" className="hover:text-slate-900">
+            <Link href="/contact-us" className="hover:text-slate-900">
               Contact
             </Link>
 

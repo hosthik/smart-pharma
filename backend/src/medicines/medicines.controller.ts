@@ -8,11 +8,58 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  UseGuards,
 } from "@nestjs/common";
 
+import type { Request } from "express";
+
 import { MedicinesService } from "./medicines.service.js";
-import { CreateMedicineDto } from "./dto/create-medicine.dto.js";
-import { UpdateMedicineDto } from "./dto/update-medicine.dto.js";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { PharmacySubscriptionGuard } from "../auth/guards/pharmacy-subscription.guard.js";
+
+type AuthenticatedRequest = Request & {
+  user?: {
+    sub: number;
+    email: string;
+    role:
+      | "ADMIN"
+      | "PHARMACY_OWNER"
+      | "PHARMACY_STAFF";
+    pharmacyId: number | null;
+  };
+};
+
+type CreateMedicineBody = {
+  name: string;
+  genericName?: string;
+  category?: string;
+  pharmacyId?: number;
+  quantity?: number;
+  price?: number;
+  stockStatus?:
+    | "AVAILABLE"
+    | "LOW_STOCK"
+    | "OUT_OF_STOCK";
+  section?: string;
+  shelf?: string;
+  row?: string;
+};
+
+type UpdateMedicineBody = {
+  name?: string;
+  genericName?: string;
+  category?: string;
+  quantity?: number;
+  price?: number;
+  stockStatus?:
+    | "AVAILABLE"
+    | "LOW_STOCK"
+    | "OUT_OF_STOCK";
+  section?: string;
+  shelf?: string;
+  row?: string;
+};
 
 @Controller("medicines")
 export class MedicinesController {
@@ -20,71 +67,138 @@ export class MedicinesController {
     private readonly medicinesService: MedicinesService,
   ) {}
 
-  @Post()
-  create(
-    @Body() dto: CreateMedicineDto,
-  ) {
-    return this.medicinesService.create(dto);
-  }
-
+  /*
+   * PHARMACY MEDICINE LIST
+   *
+   * Requires an active paid subscription.
+   */
   @Get()
-  findAll() {
-    return this.medicinesService.findAll();
+  @UseGuards(
+    JwtAuthGuard,
+    PharmacySubscriptionGuard,
+  )
+  async findAll(
+    @Query("pharmacyId") pharmacyId?: string,
+    @Req() request?: AuthenticatedRequest,
+  ) {
+    return this.medicinesService.findAll(
+      pharmacyId !== undefined
+        ? Number(pharmacyId)
+        : undefined,
+      request?.user,
+    );
   }
 
+  /*
+   * PUBLIC SEARCH
+   *
+   * Patients can search medicines without
+   * authentication or a pharmacy subscription.
+   */
   @Get("search")
-  search(
-    @Query("q") query: string,
-    @Query(
-      "pharmacyId",
-    )
-    pharmacyId?: string,
+  async search(
+    @Query("q") query?: string,
+    @Query("pharmacyId") pharmacyId?: string,
   ) {
     const parsedPharmacyId =
-      pharmacyId
+      pharmacyId !== undefined &&
+      pharmacyId.trim() !== ""
         ? Number(pharmacyId)
         : undefined;
 
-    return this.medicinesService.searchMedicines(
-      query,
+    return this.medicinesService.search(
+      query || "",
       parsedPharmacyId,
     );
   }
 
+  /*
+   * PHARMACY MEDICINE DETAILS
+   *
+   * Requires an active paid subscription.
+   */
   @Get(":id")
-  findOne(
-    @Param(
-      "id",
-      ParseIntPipe,
-    )
-    id: number,
+  @UseGuards(
+    JwtAuthGuard,
+    PharmacySubscriptionGuard,
+  )
+  async findOne(
+    @Param("id", ParseIntPipe) id: number,
+    @Query("pharmacyId") pharmacyId?: string,
+    @Req() request?: AuthenticatedRequest,
   ) {
-    return this.medicinesService.findOne(id);
-  }
-
-  @Patch(":id")
-  update(
-    @Param(
-      "id",
-      ParseIntPipe,
-    )
-    id: number,
-    @Body() dto: UpdateMedicineDto,
-  ) {
-    return this.medicinesService.update(
+    return this.medicinesService.findOne(
       id,
-      dto,
+      pharmacyId !== undefined
+        ? Number(pharmacyId)
+        : undefined,
+      request?.user,
     );
   }
 
-  @Delete(":id")
-  remove(
-    @Param(
-      "id",
-      ParseIntPipe,
-    )
-    id: number,
+  /*
+   * CREATE MEDICINE
+   *
+   * Requires an active paid subscription.
+   */
+  @Post()
+  @UseGuards(
+    JwtAuthGuard,
+    PharmacySubscriptionGuard,
+  )
+  async create(
+    @Body() body: CreateMedicineBody,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.medicinesService.remove(id);
+    return this.medicinesService.create(
+      body,
+      request.user,
+    );
+  }
+
+  /*
+   * UPDATE MEDICINE
+   *
+   * Requires an active paid subscription.
+   */
+  @Patch(":id")
+  @UseGuards(
+    JwtAuthGuard,
+    PharmacySubscriptionGuard,
+  )
+  async update(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() body: UpdateMedicineBody,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.medicinesService.update(
+      id,
+      body,
+      request.user,
+    );
+  }
+
+  /*
+   * DELETE MEDICINE
+   *
+   * Requires an active paid subscription.
+   */
+  @Delete(":id")
+  @UseGuards(
+    JwtAuthGuard,
+    PharmacySubscriptionGuard,
+  )
+  async remove(
+    @Param("id", ParseIntPipe) id: number,
+    @Query("pharmacyId") pharmacyId?: string,
+    @Req() request?: AuthenticatedRequest,
+  ) {
+    return this.medicinesService.remove(
+      id,
+      pharmacyId !== undefined
+        ? Number(pharmacyId)
+        : undefined,
+      request?.user,
+    );
   }
 }

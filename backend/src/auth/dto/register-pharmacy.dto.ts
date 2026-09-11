@@ -1,3 +1,5 @@
+
+import { Type } from "class-transformer";
 import {
   IsEmail,
   IsNumber,
@@ -33,10 +35,12 @@ export class RegisterPharmacyDto {
   // =========================
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   latitude?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   longitude?: number;
 

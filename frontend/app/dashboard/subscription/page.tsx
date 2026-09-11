@@ -2,245 +2,757 @@
 
 import Link from "next/link";
 import {
-  Activity,
-  BarChart3,
-  Boxes,
   Check,
+  CircleAlert,
+  Clipboard,
+  ClipboardCheck,
   CreditCard,
-  MapPin,
-  Pill,
-  Search,
-  ShoppingCart,
+  FileImage,
+  Loader2,
+  Upload,
 } from "lucide-react";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-const API_URL = "http://localhost:4000";
+import PharmacyNavigation from "@/components/pharmacy/PharmacyNavigation";
+import { getCurrentUser, getPharmacyId, getToken } from "@/lib/auth";
 
-const PHARMACY_ID = 1;
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-const navigation = [
-  {
-    name: "Dashboard",
-    href: "/dashboard",
-    icon: Activity,
-  },
-  {
-    name: "Inventory",
-    href: "/dashboard/inventory",
-    icon: Boxes,
-  },
-  {
-    name: "Medicines",
-    href: "/dashboard/medicines",
-    icon: Pill,
-  },
-  {
-    name: "Sales",
-    href: "/dashboard/sales",
-    icon: ShoppingCart,
-  },
-  {
-    name: "Find Medicine",
-    href: "/find-medicine",
-    icon: Search,
-  },
-  {
-    name: "Analytics",
-    href: "/dashboard/analytics",
-    icon: BarChart3,
-  },
-  {
-    name: "Subscription",
-    href: "/dashboard/subscription",
-    icon: CreditCard,
-  },
-  {
-    name: "Location",
-    href: "/dashboard/location",
-    icon: MapPin,
-  },
-];
+/*
+ * =========================================================
+ * TYPES
+ * =========================================================
+ */
+
+type PlanId =
+  | "BASIC"
+  | "ONE_WEEK"
+  | "ONE_MONTH"
+  | "6_MONTHS"
+  | "1_YEAR"
+  | "LIFETIME";
+
+type BackendPlan =
+  | "BASIC"
+  | "ONE_WEEK"
+  | "ONE_MONTH"
+  | "STANDARD"
+  | "PROFESSIONAL"
+  | "ENTERPRISE";
+
+type SubscriptionStatus = "ACTIVE" | "EXPIRED" | "CANCELLED" | "PENDING";
 
 type Subscription = {
   id: number;
   pharmacyId: number;
-  plan: string;
-  status: string;
+  plan: BackendPlan;
+  status: SubscriptionStatus;
   startDate: string | null;
   renewalDate: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
+type BankAccount = {
+  id: number;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  branch?: string | null;
+  instructions?: string | null;
+};
+
 type Plan = {
-  name: "Professional" | "Enterprise";
+  id: PlanId;
+  name: string;
   price: number;
+  duration: string;
   description: string;
   features: string[];
+  popular?: boolean;
 };
+
+/*
+ * =========================================================
+ * SUBSCRIPTION PLANS
+ * =========================================================
+ */
 
 const plans: Plan[] = [
   {
-    name: "Professional",
-    price: 100,
-    description: "For pharmacies that need powerful everyday management tools.",
+    id: "BASIC",
+    name: "Basic",
+    price: 0,
+    duration: "Free",
+    description: "Essential tools for getting started.",
     features: [
-      "Inventory management",
-      "Medicine management",
-      "Sales management",
+      "Medicine inventory management",
+      "Basic pharmacy dashboard",
       "Medicine search",
-      "Analytics",
-      "10 pieces maximum per medicine",
-      "24-hour subscription",
+      "Basic pharmacy management",
     ],
   },
+
   {
-    name: "Enterprise",
-    price: 100,
-    description: "For larger pharmacies requiring advanced management.",
+    id: "ONE_WEEK",
+    name: "1 Week",
+    price: 1000,
+    duration: "7 days",
+    description: "Short-term access for pharmacies.",
     features: [
-      "Everything in Professional",
-      "Advanced analytics",
-      "Priority support",
-      "Advanced pharmacy management",
-      "Enterprise features",
-      "10 pieces maximum per medicine",
-      "24-hour subscription",
+      "All Basic features",
+      "Full subscription access",
+      "Inventory management",
+      "Sales and pharmacy tools",
+    ],
+  },
+
+  {
+    id: "ONE_MONTH",
+    name: "1 Month",
+    price: 3000,
+    duration: "30 days",
+    description: "Flexible monthly subscription.",
+    features: [
+      "All Basic features",
+      "Full subscription access",
+      "Inventory management",
+      "Sales and pharmacy tools",
+    ],
+  },
+
+  {
+    id: "6_MONTHS",
+    name: "6 Months",
+    price: 15000,
+    duration: "6 months",
+    description: "Extended access for growing pharmacies.",
+    features: [
+      "All Basic features",
+      "Full subscription access",
+      "Inventory management",
+      "Sales and pharmacy tools",
+      "Extended subscription period",
+    ],
+  },
+
+  {
+    id: "1_YEAR",
+    name: "1 Year",
+    price: 25000,
+    duration: "12 months",
+    description: "Best value for long-term pharmacy use.",
+    popular: true,
+    features: [
+      "All Basic features",
+      "Full subscription access",
+      "Inventory management",
+      "Sales and pharmacy tools",
+      "Best long-term value",
+    ],
+  },
+
+  {
+    id: "LIFETIME",
+    name: "Lifetime",
+    price: 120000,
+    duration: "Lifetime",
+    description: "One payment with no expiration.",
+    features: [
+      "All Basic features",
+      "Full subscription access",
+      "Inventory management",
+      "Sales and pharmacy tools",
+      "No renewal required",
+      "Lifetime access",
     ],
   },
 ];
 
-const telebirrPaymentName = "SmartPharma";
-const telebirrPaymentNumber = "0973985357";
+/*
+ * =========================================================
+ * FRONTEND → BACKEND PLAN MAPPING
+ * =========================================================
+ *
+ * BASIC       → handled separately
+ * ONE_WEEK    → ONE_WEEK
+ * ONE_MONTH   → ONE_MONTH
+ * 6_MONTHS    → STANDARD
+ * 1_YEAR      → PROFESSIONAL
+ * LIFETIME     → ENTERPRISE
+ */
+
+const paymentPlanMap: Record<
+  Exclude<PlanId, "BASIC">,
+  Exclude<BackendPlan, "BASIC">
+> = {
+  ONE_WEEK: "ONE_WEEK",
+  ONE_MONTH: "ONE_MONTH",
+  "6_MONTHS": "STANDARD",
+  "1_YEAR": "PROFESSIONAL",
+  LIFETIME: "ENTERPRISE",
+};
+
+/*
+ * =========================================================
+ * STORAGE HELPERS
+ * =========================================================
+ */
+
+function subscribeToStorage(onStoreChange: () => void) {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handleStorage = () => {
+    onStoreChange();
+  };
+
+  window.addEventListener("storage", handleStorage);
+
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+  };
+}
+
+function getStorageSnapshot() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.localStorage.getItem("smartpharma_user") || "";
+}
+
+function getServerSnapshot() {
+  return "";
+}
+
+/*
+ * =========================================================
+ * PHARMACY HELPERS
+ * =========================================================
+ */
+
+function getClientPharmacyId(): number | null {
+  const value = getPharmacyId();
+
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const id = Number(value);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+
+  return id;
+}
+
+function getClientPharmacyName(): string {
+  const user = getCurrentUser();
+
+  if (
+    user &&
+    typeof user === "object" &&
+    "pharmacyName" in user &&
+    typeof user.pharmacyName === "string"
+  ) {
+    return user.pharmacyName;
+  }
+
+  if (
+    user &&
+    typeof user === "object" &&
+    "pharmacy" in user &&
+    user.pharmacy &&
+    typeof user.pharmacy === "object" &&
+    "name" in user.pharmacy &&
+    typeof user.pharmacy.name === "string"
+  ) {
+    return user.pharmacy.name;
+  }
+
+  return "Your Pharmacy";
+}
+
+/*
+ * =========================================================
+ * DISPLAY HELPERS
+ * =========================================================
+ */
+
+function formatPrice(price: number) {
+  if (price === 0) {
+    return "Free";
+  }
+
+  return `${price.toLocaleString()} ETB`;
+}
+
+function getDisplayPlanName(plan: BackendPlan) {
+  switch (plan) {
+    case "BASIC":
+      return "Basic";
+
+    case "ONE_WEEK":
+      return "1 Week";
+
+    case "ONE_MONTH":
+      return "1 Month";
+
+    case "STANDARD":
+      return "6 Months";
+
+    case "PROFESSIONAL":
+      return "1 Year";
+
+    case "ENTERPRISE":
+      return "Lifetime";
+
+    default:
+      return plan;
+  }
+}
+
+function getDurationText(plan: BackendPlan) {
+  switch (plan) {
+    case "BASIC":
+      return "No expiration";
+
+    case "ONE_WEEK":
+      return "7 days";
+
+    case "ONE_MONTH":
+      return "30 days";
+
+    case "STANDARD":
+      return "6 months";
+
+    case "PROFESSIONAL":
+      return "12 months";
+
+    case "ENTERPRISE":
+      return "Lifetime";
+
+    default:
+      return "";
+  }
+}
+
+function isPaidPlan(plan: PlanId): plan is Exclude<PlanId, "BASIC"> {
+  return plan !== "BASIC";
+}
+
+/*
+ * =========================================================
+ * COMPONENT
+ * =========================================================
+ */
 
 export default function SubscriptionPage() {
-  const [currentSubscription, setCurrentSubscription] =
-    useState<Subscription | null>(null);
+  const rawUser = useSyncExternalStore(
+    subscribeToStorage,
+    getStorageSnapshot,
+    getServerSnapshot,
+  );
 
-  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
+  const pharmacyId = useMemo(() => {
+    void rawUser;
 
-  const [selectedPlan, setSelectedPlan] =
-    useState<Plan["name"]>("Professional");
+    return getClientPharmacyId();
+  }, [rawUser]);
+
+  const pharmacyName = useMemo(() => {
+    void rawUser;
+
+    return getClientPharmacyName();
+  }, [rawUser]);
+
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+
+  const [banks, setBanks] = useState<BankAccount[]>([]);
+
+  const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
+
+  const [copiedBankId, setCopiedBankId] = useState<number | null>(null);
+
+  const [selectedPlan, setSelectedPlan] = useState<PlanId>("BASIC");
 
   const [transactionId, setTransactionId] = useState("");
 
   const [screenshot, setScreenshot] = useState<File | null>(null);
 
-  const [preview, setPreview] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [submitting, setSubmitting] = useState(false);
 
-  const [successMessage, setSuccessMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const [errorMessage, setErrorMessage] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [fileInputKey, setFileInputKey] = useState(0);
+
+  const selectedPlanDetails =
+    plans.find((plan) => plan.id === selectedPlan) || plans[0];
+
+  /*
+   * =========================================================
+   * LOAD SUBSCRIPTION + BANK ACCOUNTS
+   * =========================================================
+   */
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadSubscription() {
+    async function loadData() {
+      if (!pharmacyId) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+
       try {
-        const response = await fetch(
-          `${API_URL}/payments/subscription/${PHARMACY_ID}`,
-        );
+        const token = getToken();
 
-        if (!response.ok) {
-          throw new Error("Failed to load subscription.");
+        const headers: HeadersInit = token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {};
+
+        const [subscriptionResponse, banksResponse] = await Promise.all([
+          fetch(`${API_URL}/payments/subscription/${pharmacyId}`, {
+            headers,
+            cache: "no-store",
+          }),
+
+          fetch(`${API_URL}/payments/banks`, {
+            headers,
+            cache: "no-store",
+          }),
+        ]);
+
+        if (!subscriptionResponse.ok) {
+          const data = await subscriptionResponse.json().catch(() => null);
+
+          throw new Error(data?.message || "Unable to load your subscription.");
         }
 
-        const data = await response.json();
+        const subscriptionData = await subscriptionResponse.json();
+
+        let banksData: BankAccount[] = [];
+
+        if (banksResponse.ok) {
+          const parsed = await banksResponse.json();
+
+          if (Array.isArray(parsed)) {
+            banksData = parsed;
+          }
+        }
 
         if (cancelled) {
           return;
         }
 
-        setCurrentSubscription(data.subscription ?? null);
+        setSubscription(subscriptionData || null);
 
-        setSubscriptionLoading(false);
-      } catch {
-        if (cancelled) {
-          return;
+        setBanks(banksData);
+
+        /*
+         * Automatically select the current plan.
+         */
+
+        switch (subscriptionData?.plan as BackendPlan) {
+          case "BASIC":
+            setSelectedPlan("BASIC");
+            break;
+
+          case "ONE_WEEK":
+            setSelectedPlan("ONE_WEEK");
+            break;
+
+          case "ONE_MONTH":
+            setSelectedPlan("ONE_MONTH");
+            break;
+
+          case "STANDARD":
+            setSelectedPlan("6_MONTHS");
+            break;
+
+          case "PROFESSIONAL":
+            setSelectedPlan("1_YEAR");
+            break;
+
+          case "ENTERPRISE":
+            setSelectedPlan("LIFETIME");
+            break;
         }
-
-        setCurrentSubscription(null);
-        setSubscriptionLoading(false);
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load subscription information.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    loadSubscription();
+    void loadData();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pharmacyId]);
 
-  const selectedPlanDetails = useMemo(() => {
-    return plans.find((plan) => plan.name === selectedPlan);
-  }, [selectedPlan]);
+  /*
+   * =========================================================
+   * SELECT PLAN
+   * =========================================================
+   */
 
-  const isActive = currentSubscription?.status === "ACTIVE";
+  function handleSelectPlan(plan: PlanId) {
+    setSelectedPlan(plan);
 
-  function handleScreenshotChange(event: ChangeEvent<HTMLInputElement>) {
+    setError("");
+    setSuccess("");
+
+    if (plan === "BASIC") {
+      setSelectedBankId(null);
+      setTransactionId("");
+      setScreenshot(null);
+
+      setFileInputKey((value) => value + 1);
+    }
+  }
+
+  /*
+   * =========================================================
+   * SELECT BANK
+   * =========================================================
+   */
+
+  function handleSelectBank(bankId: number) {
+    setSelectedBankId(bankId);
+
+    setError("");
+    setSuccess("");
+  }
+
+  /*
+   * =========================================================
+   * COPY ACCOUNT NUMBER
+   * =========================================================
+   */
+
+  async function copyAccountNumber(bank: BankAccount) {
+    try {
+      await navigator.clipboard.writeText(bank.accountNumber);
+
+      setCopiedBankId(bank.id);
+
+      setTimeout(() => {
+        setCopiedBankId((current) => (current === bank.id ? null : current));
+      }, 2000);
+    } catch {
+      setError("Unable to copy the account number.");
+    }
+  }
+
+  /*
+   * =========================================================
+   * SCREENSHOT
+   * =========================================================
+   */
+
+  function handleScreenshotChange(event: React.ChangeEvent<HTMLInputElement>) {
+    setError("");
+    setSuccess("");
+
     const file = event.target.files?.[0];
 
     if (!file) {
+      setScreenshot(null);
       return;
     }
 
-    setSuccessMessage("");
-    setErrorMessage("");
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
 
-    if (!file.type.startsWith("image/")) {
+    if (!allowedTypes.includes(file.type)) {
       setScreenshot(null);
-      setPreview(null);
-      setErrorMessage("Please select an image file.");
+
+      setFileInputKey((value) => value + 1);
+
+      setError("Please upload a JPEG, PNG, or WebP image.");
+
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
       setScreenshot(null);
-      setPreview(null);
-      setErrorMessage("Screenshot must be smaller than 5 MB.");
+
+      setFileInputKey((value) => value + 1);
+
+      setError("Payment screenshot must be smaller than 5MB.");
+
       return;
     }
 
     setScreenshot(file);
-
-    const objectUrl = URL.createObjectURL(file);
-
-    setPreview(objectUrl);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  /*
+   * =========================================================
+   * ACTIVATE BASIC
+   * =========================================================
+   */
+
+  async function handleActivateBasic() {
+    if (!pharmacyId) {
+      setError("Pharmacy information could not be found.");
+
+      return;
+    }
+
+    const token = getToken();
+
+    if (!token) {
+      setError("Your session has expired. Please log in again.");
+
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      /*
+       * Pharmacy ID is NOT sent here.
+       *
+       * The backend controller gets the pharmacy ID
+       * securely from request.user.pharmacyId.
+       */
+
+      const response = await fetch(`${API_URL}/payments/subscription/basic`, {
+        method: "POST",
+
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const message = Array.isArray(data?.message)
+          ? data.message.join(", ")
+          : data?.message;
+
+        throw new Error(message || "Unable to activate the Basic plan.");
+      }
+
+      /*
+       * The backend normally returns the subscription
+       * object directly.
+       *
+       * This also supports { subscription: {...} }
+       * if the backend is changed later.
+       */
+
+      const newSubscription = data?.subscription ?? data;
+
+      if (newSubscription && typeof newSubscription === "object") {
+        setSubscription(newSubscription as Subscription);
+      }
+
+      setSelectedPlan("BASIC");
+
+      setSuccess("Basic plan activated successfully.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to activate the Basic plan.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /*
+   * =========================================================
+   * PAYMENT SUBMISSION
+   * =========================================================
+   */
+
+  async function handleSubmitPayment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    setSuccessMessage("");
-    setErrorMessage("");
+    if (!pharmacyId) {
+      setError("Pharmacy information could not be found.");
 
-    if (!selectedPlanDetails) {
-      setErrorMessage("Please select a subscription plan.");
+      return;
+    }
+
+    /*
+     * Basic does not use the payment endpoint.
+     */
+
+    if (selectedPlan === "BASIC") {
+      await handleActivateBasic();
+      return;
+    }
+
+    if (selectedBankId === null) {
+      setError("Please select a bank account.");
+
       return;
     }
 
     if (!transactionId.trim()) {
-      setErrorMessage("Please enter your TeleBirr transaction ID.");
+      setError("Please enter your transaction ID.");
+
       return;
     }
 
     if (!screenshot) {
-      setErrorMessage("Please upload your payment screenshot.");
+      setError("Please upload your payment screenshot.");
+
       return;
     }
 
-    try {
-      setSubmitting(true);
+    const token = getToken();
 
+    if (!token) {
+      setError("Your session has expired. Please log in again.");
+
+      return;
+    }
+
+    const backendPlan = paymentPlanMap[selectedPlan];
+
+    setSubmitting(true);
+    setError("");
+    setSuccess("");
+
+    try {
       const formData = new FormData();
 
-      formData.append("pharmacyId", String(PHARMACY_ID));
+      formData.append("pharmacyId", String(pharmacyId));
 
-      formData.append("plan", selectedPlan);
+      formData.append("plan", backendPlan);
 
-      formData.append("amount", "100");
+      formData.append("amount", String(selectedPlanDetails.price));
+
+      formData.append("bankAccountId", String(selectedBankId));
 
       formData.append("transactionId", transactionId.trim());
 
@@ -248,286 +760,265 @@ export default function SubscriptionPage() {
 
       const response = await fetch(`${API_URL}/payments`, {
         method: "POST",
+
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+
         body: formData,
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(
-          Array.isArray(data.message)
-            ? data.message.join(", ")
-            : data.message || "Payment submission failed.",
-        );
+        const message = Array.isArray(data?.message)
+          ? data.message.join(", ")
+          : data?.message;
+
+        throw new Error(message || "Unable to submit payment.");
       }
 
-      setSuccessMessage(
-        "Payment submitted successfully. Your payment is now pending verification.",
+      setSuccess(
+        "Payment submitted successfully. Please wait for admin verification.",
       );
 
       setTransactionId("");
+
       setScreenshot(null);
-      setPreview(null);
 
-      const subscriptionResponse = await fetch(
-        `${API_URL}/payments/subscription/${PHARMACY_ID}`,
-      );
+      setSelectedBankId(null);
 
-      if (subscriptionResponse.ok) {
-        const subscriptionData = await subscriptionResponse.json();
-
-        setCurrentSubscription(subscriptionData.subscription ?? null);
-      }
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Payment submission failed.",
+      setFileInputKey((value) => value + 1);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Unable to submit payment.",
       );
     } finally {
       setSubmitting(false);
     }
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-50 border-b bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-sm font-bold text-white">
-              SP
-            </div>
+  /*
+   * =========================================================
+   * NO PHARMACY
+   * =========================================================
+   */
 
-            <div>
-              <p className="font-bold text-slate-900">SmartPharma</p>
+  if (!pharmacyId && !loading) {
+    return (
+      <main className="min-h-screen bg-slate-50">
+        <PharmacyNavigation />
 
-              <p className="hidden text-xs text-slate-500 sm:block">
-                Pharmacy Management
-              </p>
-            </div>
-          </Link>
+        <section className="mx-auto max-w-5xl px-6 py-20">
+          <div className="rounded-2xl border border-red-200 bg-white p-10 text-center shadow-sm">
+            <CircleAlert className="mx-auto mb-4 h-12 w-12 text-red-500" />
 
-          <nav className="hidden items-center gap-1 lg:flex">
-            {navigation.map((item) => {
-              const Icon = item.icon;
+            <h1 className="text-2xl font-bold text-slate-900">
+              Pharmacy account not found
+            </h1>
 
-              const active = item.href === "/dashboard/subscription";
+            <p className="mt-3 text-slate-600">
+              Please log in again to manage your subscription.
+            </p>
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                    active
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.name}
-                </Link>
-              );
-            })}
-          </nav>
-
-          <div className="hidden items-center gap-3 sm:flex">
-            <div className="text-right">
-              <p className="text-sm font-semibold text-slate-900">
-                Pharmacy Admin
-              </p>
-
-              <p className="text-xs text-slate-500">Pharmacy #1</p>
-            </div>
-
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-700">
-              PA
-            </div>
+            <Link
+              href="/pharmacy/login"
+              className="mt-6 inline-flex rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800"
+            >
+              Pharmacy Login
+            </Link>
           </div>
-        </div>
-
-        <div className="overflow-x-auto border-t lg:hidden">
-          <nav className="mx-auto flex min-w-max gap-1 px-4 py-2">
-            {navigation.map((item) => {
-              const Icon = item.icon;
-
-              const active = item.href === "/dashboard/subscription";
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
-                    active
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.name}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <section className="mb-8">
-          <p className="mb-2 text-sm font-medium text-slate-500">
-            Account & Billing
-          </p>
-
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            Subscription
-          </h1>
-
-          <p className="mt-2 max-w-2xl text-slate-600">
-            Manage your SmartPharma subscription and submit TeleBirr payments
-            for verification.
-          </p>
         </section>
+      </main>
+    );
+  }
 
-        {subscriptionLoading ? (
-          <div className="mb-8 rounded-xl border bg-white p-8 shadow-sm">
-            <p className="text-center text-sm text-slate-500">
-              Checking your subscription...
-            </p>
+  /*
+   * =========================================================
+   * PAGE
+   * =========================================================
+   */
+
+  return (
+    <main className="min-h-screen bg-slate-50">
+      <PharmacyNavigation />
+
+      {/* HERO */}
+      <section className="border-b bg-white">
+        <div className="mx-auto max-w-7xl px-6 py-10">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wider text-blue-600">
+                Subscription
+              </p>
+
+              <h1 className="mt-2 text-3xl font-bold text-slate-900 md:text-4xl">
+                Choose your pharmacy plan
+              </h1>
+
+              <p className="mt-3 max-w-2xl text-slate-600">
+                Select the subscription that best fits your pharmacy. Payments
+                are verified by the SmartPharma admin.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border bg-slate-50 px-6 py-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Pharmacy
+              </p>
+
+              <p className="mt-1 font-semibold text-slate-900">
+                {pharmacyName}
+              </p>
+            </div>
           </div>
-        ) : isActive && currentSubscription ? (
-          <div className="mb-8 overflow-hidden rounded-xl border border-green-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-4 border-b border-green-100 p-6 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">
-                  Current Subscription
-                </p>
+        </div>
+      </section>
 
-                <h2 className="mt-1 text-2xl font-bold text-slate-900">
-                  {currentSubscription.plan}
+      {/* MAIN CONTENT */}
+      <section className="mx-auto max-w-7xl px-6 py-10">
+        {/* CURRENT SUBSCRIPTION */}
+        <div className="mb-8 rounded-2xl border bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5 text-blue-600" />
+
+                <h2 className="text-lg font-bold text-slate-900">
+                  Current subscription
                 </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Your pharmacy currently has an active SmartPharma
-                  subscription.
-                </p>
               </div>
 
-              <span className="inline-flex w-fit items-center gap-2 rounded-full bg-green-100 px-4 py-2 text-sm font-bold text-green-700">
-                <span className="h-2 w-2 rounded-full bg-green-600" />
-                ACTIVE
-              </span>
+              {loading ? (
+                <div className="mt-3 h-5 w-48 animate-pulse rounded bg-slate-200" />
+              ) : subscription ? (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <span className="font-semibold text-slate-900">
+                    {getDisplayPlanName(subscription.plan)}
+                  </span>
+
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      subscription.status === "ACTIVE"
+                        ? "bg-green-100 text-green-700"
+                        : subscription.status === "PENDING"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : "bg-red-100 text-red-700"
+                    }`}
+                  >
+                    {subscription.status}
+                  </span>
+
+                  <span className="text-sm text-slate-500">
+                    {getDurationText(subscription.plan)}
+                  </span>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500">
+                  No subscription has been activated yet.
+                </p>
+              )}
             </div>
 
-            <div className="grid gap-6 p-6 sm:grid-cols-3">
-              <div>
-                <p className="text-sm text-slate-500">Plan</p>
+            {subscription?.renewalDate && (
+              <div className="text-left md:text-right">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Renewal date
+                </p>
 
                 <p className="mt-1 font-semibold text-slate-900">
-                  {currentSubscription.plan}
+                  {new Date(subscription.renewalDate).toLocaleDateString()}
                 </p>
               </div>
-
-              <div>
-                <p className="text-sm text-slate-500">Started</p>
-
-                <p className="mt-1 font-semibold text-slate-900">
-                  {currentSubscription.startDate
-                    ? new Date(currentSubscription.startDate).toLocaleString()
-                    : "—"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm text-slate-500">Expires</p>
-
-                <p className="mt-1 font-semibold text-slate-900">
-                  {currentSubscription.renewalDate
-                    ? new Date(currentSubscription.renewalDate).toLocaleString()
-                    : "—"}
-                </p>
-              </div>
-            </div>
+            )}
           </div>
-        ) : (
-          <div className="mb-8 rounded-xl border bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">
-              Current Subscription
-            </p>
+        </div>
 
-            <h2 className="mt-1 text-xl font-bold text-slate-900">
-              No active subscription
-            </h2>
+        {/* ERROR */}
+        {error && (
+          <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
 
-            <p className="mt-2 text-sm text-slate-500">
-              Choose a plan below and submit your TeleBirr payment.
-            </p>
+            <p className="text-sm font-medium">{error}</p>
           </div>
         )}
 
-        <section className="mb-10">
+        {/* SUCCESS */}
+        {success && (
+          <div className="mb-6 flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-green-700">
+            <Check className="mt-0.5 h-5 w-5 shrink-0" />
+
+            <p className="text-sm font-medium">{success}</p>
+          </div>
+        )}
+
+        {/* PLANS */}
+        <div>
           <div className="mb-5">
-            <h2 className="text-xl font-bold text-slate-900">
-              Subscription Plans
+            <h2 className="text-2xl font-bold text-slate-900">
+              Subscription plans
             </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              All SmartPharma plans cost 100 ETB and remain active for 24 hours
-              after payment verification.
+            <p className="mt-1 text-slate-600">
+              Choose a plan below to continue.
             </p>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {plans.map((plan) => {
-              const selected = selectedPlan === plan.name;
-
-              const current =
-                currentSubscription?.plan === plan.name.toUpperCase() &&
-                isActive;
+              const selected = selectedPlan === plan.id;
 
               return (
                 <button
+                  key={plan.id}
                   type="button"
-                  key={plan.name}
-                  onClick={() => setSelectedPlan(plan.name)}
-                  className={`rounded-xl border bg-white p-6 text-left shadow-sm transition ${
+                  onClick={() => handleSelectPlan(plan.id)}
+                  className={`relative flex h-full flex-col rounded-2xl border bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md ${
                     selected
-                      ? "border-slate-900 ring-2 ring-slate-900"
-                      : "border-slate-200 hover:border-slate-400"
+                      ? "border-blue-600 ring-2 ring-blue-100"
+                      : "border-slate-200"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-xl font-bold text-slate-900">
-                        {plan.name}
-                      </h3>
+                  {plan.popular && (
+                    <span className="absolute right-5 top-5 rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white">
+                      Popular
+                    </span>
+                  )}
 
-                      <p className="mt-1 text-sm text-slate-500">
-                        {plan.description}
-                      </p>
-                    </div>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-bold text-slate-900">
+                      {plan.name}
+                    </h3>
 
-                    {current && (
-                      <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-                        ACTIVE
+                    {selected && (
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white">
+                        <Check className="h-4 w-4" />
                       </span>
                     )}
                   </div>
 
-                  <div className="mt-6">
+                  <div className="mt-5">
                     <span className="text-3xl font-bold text-slate-900">
-                      100 ETB
+                      {formatPrice(plan.price)}
                     </span>
 
                     <span className="ml-2 text-sm text-slate-500">
-                      / 24 hours
+                      {plan.duration}
                     </span>
                   </div>
 
-                  <div className="mt-6 space-y-3">
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
+                    {plan.description}
+                  </p>
+
+                  <div className="mt-5 space-y-3">
                     {plan.features.map((feature) => (
-                      <div
-                        key={feature}
-                        className="flex items-center gap-2 text-sm text-slate-600"
-                      >
-                        <Check className="h-4 w-4 text-green-600" />
-                        {feature}
+                      <div key={feature} className="flex items-start gap-2">
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+
+                        <span className="text-sm text-slate-600">
+                          {feature}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -535,180 +1026,334 @@ export default function SubscriptionPage() {
               );
             })}
           </div>
-        </section>
+        </div>
 
-        <section className="grid gap-8 lg:grid-cols-3">
-          <div className="rounded-xl border bg-white p-6 shadow-sm lg:col-span-1">
-            <h2 className="text-xl font-bold text-slate-900">
-              TeleBirr Payment
-            </h2>
+        {/* SELECTED PLAN */}
+        <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_360px]">
+          <div>
+            {selectedPlan === "BASIC" ? (
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100 text-green-700">
+                    <Check className="h-5 w-5" />
+                  </div>
 
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Send exactly 100 ETB to the SmartPharma TeleBirr account.
-            </p>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">
+                      Basic plan
+                    </h2>
 
-            <div className="mt-6 rounded-lg bg-slate-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Payment Name
+                    <p className="text-sm text-slate-500">
+                      Free — no payment required
+                    </p>
+                  </div>
+                </div>
+
+                <p className="mt-5 leading-7 text-slate-600">
+                  The Basic plan is completely free. You do not need to upload a
+                  payment screenshot or provide a transaction ID.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleActivateBasic}
+                  disabled={submitting}
+                  className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Activating...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Activate Basic
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <form
+                onSubmit={handleSubmitPayment}
+                className="rounded-2xl border bg-white p-6 shadow-sm"
+              >
+                <div className="mb-7">
+                  <h2 className="text-xl font-bold text-slate-900">
+                    Complete payment
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Selected plan:{" "}
+                    <span className="font-semibold text-slate-800">
+                      {selectedPlanDetails.name}
+                    </span>
+                  </p>
+                </div>
+
+                {/* BANKS */}
+                <div>
+                  <div className="mb-3">
+                    <h3 className="font-bold text-slate-900">
+                      1. Select bank account
+                    </h3>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      Send the exact subscription amount to one of the active
+                      accounts.
+                    </p>
+                  </div>
+
+                  {banks.length === 0 ? (
+                    <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+                      No active bank accounts are currently available. Please
+                      contact the administrator.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {banks.map((bank) => {
+                        const selected = selectedBankId === bank.id;
+
+                        return (
+                          <div
+                            key={bank.id}
+                            className={`rounded-xl border p-4 transition ${
+                              selected
+                                ? "border-blue-600 bg-blue-50"
+                                : "border-slate-200 bg-white"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleSelectBank(bank.id)}
+                              className="w-full text-left"
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <p className="font-bold text-slate-900">
+                                    {bank.bankName}
+                                  </p>
+
+                                  <p className="mt-1 text-sm text-slate-600">
+                                    {bank.accountName}
+                                  </p>
+
+                                  <p className="mt-2 font-mono text-sm text-slate-900">
+                                    {bank.accountNumber}
+                                  </p>
+
+                                  {bank.branch && (
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      Branch: {bank.branch}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <span
+                                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+                                    selected
+                                      ? "border-blue-600 bg-blue-600 text-white"
+                                      : "border-slate-300"
+                                  }`}
+                                >
+                                  {selected && <Check className="h-4 w-4" />}
+                                </span>
+                              </div>
+                            </button>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => copyAccountNumber(bank)}
+                                className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                              >
+                                {copiedBankId === bank.id ? (
+                                  <>
+                                    <ClipboardCheck className="h-4 w-4 text-green-600" />
+                                    Copied
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clipboard className="h-4 w-4" />
+                                    Copy account
+                                  </>
+                                )}
+                              </button>
+                            </div>
+
+                            {bank.instructions && (
+                              <p className="mt-3 rounded-lg bg-slate-100 p-3 text-xs leading-5 text-slate-600">
+                                {bank.instructions}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* TRANSACTION ID */}
+                <div className="mt-8">
+                  <label
+                    htmlFor="transactionId"
+                    className="mb-2 block font-bold text-slate-900"
+                  >
+                    2. Transaction ID
+                  </label>
+
+                  <input
+                    id="transactionId"
+                    type="text"
+                    value={transactionId}
+                    onChange={(event) => setTransactionId(event.target.value)}
+                    placeholder="Enter your bank transaction ID"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  />
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    Enter the transaction/reference number from your bank
+                    payment.
+                  </p>
+                </div>
+
+                {/* SCREENSHOT */}
+                <div className="mt-8">
+                  <label
+                    htmlFor="screenshot"
+                    className="mb-2 block font-bold text-slate-900"
+                  >
+                    3. Payment screenshot
+                  </label>
+
+                  <div className="rounded-xl border-2 border-dashed border-slate-300 p-5">
+                    <input
+                      key={fileInputKey}
+                      id="screenshot"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleScreenshotChange}
+                      className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-slate-800"
+                    />
+
+                    <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                      <FileImage className="h-4 w-4" />
+
+                      <span>JPEG, PNG or WebP • Maximum 5MB</span>
+                    </div>
+
+                    {screenshot && (
+                      <div className="mt-3 flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+                        <Upload className="h-4 w-4" />
+
+                        <span className="truncate">{screenshot.name}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* SUBMIT */}
+                <button
+                  type="submit"
+                  disabled={submitting || banks.length === 0}
+                  className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3.5 font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Submitting payment...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="h-5 w-5" />
+                      Submit Payment
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+          </div>
+
+          {/* SELECTED PLAN SUMMARY */}
+          <aside className="h-fit rounded-2xl border bg-white p-6 shadow-sm lg:sticky lg:top-6">
+            <h2 className="text-lg font-bold text-slate-900">Selected plan</h2>
+
+            <div className="mt-5 rounded-xl bg-slate-50 p-5">
+              <p className="text-sm font-semibold text-slate-500">
+                {selectedPlanDetails.name}
               </p>
 
-              <p className="mt-1 font-semibold text-slate-900">
-                {telebirrPaymentName}
+              <p className="mt-2 text-3xl font-bold text-slate-900">
+                {formatPrice(selectedPlanDetails.price)}
               </p>
-
-              <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">
-                TeleBirr Number
-              </p>
-
-              <p className="mt-1 font-semibold text-slate-900">
-                {telebirrPaymentNumber}
-              </p>
-
-              <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">
-                Amount
-              </p>
-
-              <p className="mt-1 text-2xl font-bold text-slate-900">100 ETB</p>
 
               <p className="mt-1 text-sm text-slate-500">
-                Valid for 24 hours after verification
+                {selectedPlanDetails.duration}
               </p>
             </div>
 
-            <div className="mt-6 space-y-3 text-sm text-slate-600">
-              <p>
-                <strong>1.</strong> Send exactly 100 ETB.
-              </p>
+            <div className="mt-5 space-y-3">
+              {selectedPlanDetails.features.map((feature) => (
+                <div key={feature} className="flex items-start gap-2">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
 
-              <p>
-                <strong>2.</strong> Save your TeleBirr transaction ID.
-              </p>
-
-              <p>
-                <strong>3.</strong> Take a screenshot of the successful payment.
-              </p>
-
-              <p>
-                <strong>4.</strong> Submit the information using the form.
-              </p>
+                  <span className="text-sm text-slate-600">{feature}</span>
+                </div>
+              ))}
             </div>
-          </div>
 
-          <div className="rounded-xl border bg-white p-6 shadow-sm lg:col-span-2">
-            <h2 className="text-xl font-bold text-slate-900">Submit Payment</h2>
+            {isPaidPlan(selectedPlan) && (
+              <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <div className="flex items-start gap-2">
+                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
 
-            <p className="mt-2 text-sm text-slate-500">
-              Your payment will remain pending until an administrator verifies
-              it.
+                  <p className="text-xs leading-5 text-blue-800">
+                    After submitting your payment, an administrator must verify
+                    the transaction before your subscription becomes active.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {selectedPlan === "BASIC" && (
+              <div className="mt-6 rounded-xl border border-green-100 bg-green-50 p-4">
+                <div className="flex items-start gap-2">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+
+                  <p className="text-xs leading-5 text-green-800">
+                    Basic is completely free. No bank transfer, transaction ID,
+                    or payment screenshot is required.
+                  </p>
+                </div>
+              </div>
+            )}
+          </aside>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="border-t bg-white">
+        <div className="mx-auto max-w-7xl px-6 py-8">
+          <div className="flex flex-col gap-3 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
+            <p>
+              © {new Date().getFullYear()} SmartPharma. All rights reserved.
             </p>
 
-            {successMessage && (
-              <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-                {successMessage}
-              </div>
-            )}
+            <div className="flex gap-5">
+              <Link href="/dashboard" className="hover:text-slate-900">
+                Dashboard
+              </Link>
 
-            {errorMessage && (
-              <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                {errorMessage}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-              <div>
-                <label className="text-sm font-medium text-slate-700">
-                  Selected Plan
-                </label>
-
-                <div className="mt-2 rounded-lg border bg-slate-50 px-4 py-3">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="font-semibold text-slate-900">
-                      {selectedPlan}
-                    </span>
-
-                    <span className="font-bold text-slate-900">100 ETB</span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="transactionId"
-                  className="text-sm font-medium text-slate-700"
-                >
-                  TeleBirr Transaction ID
-                </label>
-
-                <input
-                  id="transactionId"
-                  type="text"
-                  value={transactionId}
-                  onChange={(event) => setTransactionId(event.target.value)}
-                  placeholder="Enter transaction ID"
-                  autoComplete="off"
-                  className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="screenshot"
-                  className="text-sm font-medium text-slate-700"
-                >
-                  Payment Screenshot
-                </label>
-
-                <input
-                  id="screenshot"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleScreenshotChange}
-                  className="mt-2 block w-full rounded-lg border border-slate-300 bg-white p-3 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium"
-                />
-
-                <p className="mt-2 text-xs text-slate-500">
-                  Image files only. Maximum size: 5 MB.
-                </p>
-              </div>
-
-              {preview && (
-                <div>
-                  <p className="mb-2 text-sm font-medium text-slate-700">
-                    Screenshot Preview
-                  </p>
-
-                  <div className="overflow-hidden rounded-lg border bg-slate-50 p-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={preview}
-                      alt="Payment screenshot preview"
-                      className="max-h-80 w-full rounded-md object-contain"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              <Link
+                href="/dashboard/subscription"
+                className="font-semibold text-slate-900"
               >
-                {submitting
-                  ? "Submitting Payment..."
-                  : "Submit 100 ETB Payment"}
-              </button>
-            </form>
-
-            <div className="mt-6 rounded-lg border bg-slate-50 p-4">
-              <p className="text-xs leading-5 text-slate-500">
-                Never share your TeleBirr PIN, password, or OTP with anyone.
-                SmartPharma only requires your transaction ID and payment
-                screenshot for verification.
-              </p>
+                Subscription
+              </Link>
             </div>
           </div>
-        </section>
-      </main>
-    </div>
+        </div>
+      </footer>
+    </main>
   );
 }

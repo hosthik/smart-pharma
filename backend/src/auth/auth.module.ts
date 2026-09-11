@@ -1,63 +1,36 @@
-import {
-  Module,
-} from "@nestjs/common";
+import { Module } from "@nestjs/common";
+import { JwtModule } from "@nestjs/jwt";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 
-import {
-  JwtModule,
-} from "@nestjs/jwt";
-
-import {
-  AuthController,
-} from "./auth.controller.js";
-
-import {
-  AuthService,
-} from "./auth.service.js";
-
-import {
-  DocumentController,
-} from "./document.controller.js";
-
-import {
-  DocumentService,
-} from "./document.service.js";
-
-import {
-  JwtAuthGuard,
-} from "./guards/jwt-auth.guard.js";
-
-import {
-  AdminGuard,
-} from "./guards/admin.guard.js";
+import { AuthController } from "./auth.controller.js";
+import { AuthService } from "./auth.service.js";
+import { PharmacySubscriptionGuard } from "./guards/pharmacy-subscription.guard.js";
 
 @Module({
   imports: [
-    JwtModule.register({
-      secret:
-        process.env.JWT_SECRET ||
-        "smartpharma-dev-secret",
-
-      signOptions: {
-        expiresIn: "1d",
-      },
+    ConfigModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret:
+          configService.get<string>("JWT_SECRET") ||
+          "smartpharma-secret",
+        signOptions: {
+          expiresIn: "7d",
+        },
+      }),
     }),
   ],
-
-  controllers: [
-    AuthController,
-    DocumentController,
-  ],
-
+  controllers: [AuthController],
   providers: [
     AuthService,
-    DocumentService,
-    JwtAuthGuard,
-    AdminGuard,
+    PharmacySubscriptionGuard,
   ],
-
   exports: [
-    JwtAuthGuard,
-    AdminGuard,
+    AuthService,
+    JwtModule,
+    PharmacySubscriptionGuard,
   ],
 })
 export class AuthModule {}

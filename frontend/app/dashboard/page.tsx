@@ -1,107 +1,88 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { getPharmacyId } from "@/lib/auth";
 import {
   Activity,
+  AlertTriangle,
   BarChart3,
   Boxes,
+  ChevronRight,
+  Clock,
   CreditCard,
+  Info,
   MapPin,
   Pill,
-  Search,
-  ShoppingCart,
-  AlertTriangle,
-  TrendingUp,
-  Clock,
+  UserRound,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 
-const API_URL = "http://localhost:4000";
+import PharmacyNavigation from "@/components/pharmacy/PharmacyNavigation";
+import { getPharmacyId, getToken } from "@/lib/auth";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 type DashboardData = {
   pharmacy: {
-    id?: number;
-    name?: string;
+    id: number;
+    name: string;
+    address: string;
+    phone: string | null;
+    email: string | null;
+    verificationStatus: string;
   };
 
   summary: {
-    medicines: number;
+    totalMedicines: number;
+    availableMedicines: number;
+    stockAlerts: number;
+    patientSearches: number;
+  };
+
+  inventoryStatus: {
     available: number;
     lowStock: number;
     outOfStock: number;
-    totalSales: number;
-    totalRevenue: number;
   };
 
-  topSelling: {
-    medicine?: string;
-    quantity: number;
-    revenue: number;
-  }[];
-
-  demand: {
-    medicine?: string;
-    searches: number;
-    supply: number;
-    stockStatus: string;
-  }[];
-
   subscription: {
-    plan: string;
-    status: string;
-    renewalDate?: string | null;
-  } | null;
+    plan: string | null;
+    status: string | null;
+    renewalDate: string | null;
+  };
+
+  medicineDemand?: Array<{
+    medicineName: string;
+    searchCount: number;
+  }>;
 };
 
-function formatCurrency(value: number) {
-  return `ETB ${value.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
+function getSubscriptionStatusClasses(status: string | null) {
+  switch (status?.toUpperCase()) {
+    case "ACTIVE":
+      return "bg-green-50 text-green-700 ring-green-600/20";
 
-function formatDate(value?: string | null) {
-  if (!value) {
-    return "Not available";
+    case "PENDING":
+      return "bg-yellow-50 text-yellow-700 ring-yellow-600/20";
+
+    case "EXPIRED":
+    case "CANCELLED":
+      return "bg-red-50 text-red-700 ring-red-600/20";
+
+    default:
+      return "bg-slate-100 text-slate-700 ring-slate-500/20";
   }
-
-  return new Date(value).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
-function getSubscriptionLabel(status?: string) {
-  if (status === "ACTIVE") {
-    return "Active";
-  }
-
-  if (status === "EXPIRED") {
-    return "Expired";
-  }
-
-  if (status === "CANCELLED") {
-    return "Cancelled";
-  }
-
-  if (status === "PENDING") {
-    return "Pending";
-  }
-
-  return "No subscription";
 }
 
 export default function DashboardPage() {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadDashboard() {
       const pharmacyId = getPharmacyId();
+      const token = getToken();
 
       if (pharmacyId === null) {
         if (!cancelled) {
@@ -112,23 +93,38 @@ export default function DashboardPage() {
         return;
       }
 
+      if (!token) {
+        if (!cancelled) {
+          setError("Authentication token is missing. Please log in again.");
+          setLoading(false);
+        }
+
+        return;
+      }
+
       try {
+        setError("");
+
         const response = await fetch(`${API_URL}/dashboard/${pharmacyId}`, {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
           cache: "no-store",
         });
 
-        if (!response.ok) {
-          const result = await response.json().catch(() => null);
+        const result = await response.json();
 
-          throw new Error(result?.message || "Unable to load dashboard.");
+        if (!response.ok) {
+          throw new Error(
+            Array.isArray(result?.message)
+              ? result.message.join(", ")
+              : result?.message || "Unable to load dashboard.",
+          );
         }
 
-        const result: DashboardData = await response.json();
-
         if (!cancelled) {
-          setDashboard(result);
-          setError("");
+          setData(result as DashboardData);
         }
       } catch (err) {
         if (!cancelled) {
@@ -143,543 +139,469 @@ export default function DashboardPage() {
       }
     }
 
-    loadDashboard();
+    void loadDashboard();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const summary = dashboard?.summary;
-  const subscription = dashboard?.subscription;
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-50 text-slate-900">
+        <PharmacyNavigation activePath="/dashboard" />
 
-  const navigation = [
+        <section className="mx-auto max-w-7xl px-6 py-12">
+          <div className="animate-pulse space-y-6">
+            <div className="h-8 w-64 rounded bg-slate-200" />
+            <div className="h-4 w-96 rounded bg-slate-200" />
+
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-32 rounded-2xl bg-white shadow-sm"
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <main className="min-h-screen bg-slate-50 text-slate-900">
+        <PharmacyNavigation activePath="/dashboard" />
+
+        <section className="mx-auto max-w-7xl px-6 py-12">
+          <div className="rounded-2xl border border-red-200 bg-white p-8 shadow-sm">
+            <div className="flex items-start gap-4">
+              <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-red-600" />
+
+              <div>
+                <h1 className="text-lg font-semibold">
+                  Unable to load dashboard
+                </h1>
+
+                <p className="mt-2 text-sm text-slate-600">
+                  {error || "Dashboard information could not be loaded."}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Try Again
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const summaryCards = [
     {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: Activity,
-    },
-    {
-      name: "Inventory",
-      href: "/dashboard/inventory",
-      icon: Boxes,
-    },
-    {
-      name: "Medicines",
-      href: "/dashboard/medicines",
+      title: "Total Medicines",
+      value: data.summary?.totalMedicines ?? 0,
+      description: "Medicines in your inventory",
       icon: Pill,
     },
     {
-      name: "Sales",
-      href: "/dashboard/sales",
-      icon: ShoppingCart,
+      title: "Available",
+      value: data.summary?.availableMedicines ?? 0,
+      description: "Currently available medicines",
+      icon: Boxes,
     },
     {
-      name: "Find Medicine",
-      href: "/find-medicine",
-      icon: Search,
+      title: "Stock Alerts",
+      value: data.summary?.stockAlerts ?? 0,
+      description: "Medicines needing attention",
+      icon: AlertTriangle,
     },
     {
-      name: "Analytics",
-      href: "/dashboard/analytics",
-      icon: BarChart3,
-    },
-    {
-      name: "Subscription",
-      href: "/dashboard/subscription",
-      icon: CreditCard,
-    },
-    {
-      name: "Location",
-      href: "/dashboard/location",
-      icon: MapPin,
+      title: "Patient Searches",
+      value: data.summary?.patientSearches ?? 0,
+      description: "Recent medicine searches",
+      icon: Activity,
     },
   ];
 
-  const dashboardCards = [
+  const managementLinks = [
     {
       title: "Inventory",
-      description:
-        "Manage medicines, stock quantities, prices, and shelf locations.",
+      description: "Manage stock, prices, and shelf locations.",
       href: "/dashboard/inventory",
       icon: Boxes,
     },
     {
       title: "Medicines",
-      description: "Browse and manage your pharmacy medicine catalog.",
+      description: "View and manage your pharmacy medicines.",
       href: "/dashboard/medicines",
       icon: Pill,
     },
     {
-      title: "Sales / POS",
-      description:
-        "Sell medicines, manage the cart, and complete transactions.",
-      href: "/dashboard/sales",
-      icon: ShoppingCart,
-    },
-    {
-      title: "Find Medicine",
-      description:
-        "Search for medicines and locate pharmacies that have stock.",
-      href: "/find-medicine",
-      icon: Search,
-    },
-    {
       title: "Analytics",
-      description: "View sales, inventory, and pharmacy performance insights.",
+      description: "Understand searches, demand, and inventory.",
       href: "/dashboard/analytics",
       icon: BarChart3,
     },
     {
       title: "Subscription",
-      description:
-        "Manage your SmartPharma subscription and payment verification.",
+      description: "View your plan and subscription status.",
       href: "/dashboard/subscription",
       icon: CreditCard,
     },
+    {
+      title: "Location",
+      description: "Manage your pharmacy location information.",
+      href: "/dashboard/location",
+      icon: MapPin,
+    },
+    {
+      title: "About Us",
+      description: "Manage your pharmacy information page.",
+      href: "/dashboard/about",
+      icon: Info,
+    },
+    {
+      title: "Contact Us",
+      description: "Manage pharmacy contact information.",
+      href: "/dashboard/contact",
+      icon: Clock,
+    },
+    {
+      title: "Account Settings",
+      description: "View and update your pharmacy account.",
+      href: "/dashboard/account",
+      icon: UserRound,
+    },
   ];
 
+  const demand = data.medicineDemand ?? [];
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Top Navigation */}
-      <header className="sticky top-0 z-50 border-b bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-sm font-bold text-white">
-              SP
-            </div>
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+      <PharmacyNavigation activePath="/dashboard" />
 
-            <div>
-              <p className="font-bold text-slate-900">SmartPharma</p>
-
-              <p className="hidden text-xs text-slate-500 sm:block">
-                Pharmacy Management
-              </p>
-            </div>
-          </Link>
-
-          <nav className="hidden items-center gap-1 lg:flex">
-            {navigation.map((item) => {
-              const Icon = item.icon;
-
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.name}
-                </Link>
-              );
-            })}
-          </nav>
-
-          <div className="hidden items-center gap-3 sm:flex">
-            <div className="text-right">
-              <p className="text-sm font-semibold text-slate-900">
-                Pharmacy Admin
-              </p>
-
-              <p className="text-xs text-slate-500">
-                {dashboard?.pharmacy?.name || "SmartPharma"}
-              </p>
-            </div>
-
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-700">
-              PA
-            </div>
+      {/* Header */}
+      <section className="border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-7xl px-6 py-12 sm:py-14">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white">
+            <Activity className="h-7 w-7" />
           </div>
-        </div>
 
-        {/* Mobile Navigation */}
-        <div className="overflow-x-auto border-t lg:hidden">
-          <nav className="mx-auto flex min-w-max gap-1 px-4 py-2">
-            {navigation.map((item) => {
-              const Icon = item.icon;
-
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.name}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-      </header>
-
-      {/* Main */}
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Welcome */}
-        <section className="mb-8">
-          <p className="mb-2 text-sm font-medium text-slate-500">
-            {dashboard?.pharmacy?.name || "Pharmacy Management"}
+          <p className="mt-5 text-sm font-semibold uppercase tracking-wider text-slate-500">
+            Pharmacy Dashboard
           </p>
 
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            Dashboard
+          <h1 className="mt-3 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
+            Welcome to {data.pharmacy.name}
           </h1>
 
-          <p className="mt-2 max-w-2xl text-slate-600">
-            Monitor your pharmacy sales, inventory, medicine demand, and
-            subscription status.
+          <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
+            Manage your pharmacy, medicines, inventory, and account from one
+            place.
           </p>
-        </section>
+        </div>
+      </section>
 
-        {/* Error */}
-        {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+      {/* Main */}
+      <section className="mx-auto max-w-7xl px-6 py-12">
+        {/* Summary Cards */}
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {summaryCards.map((card) => {
+            const Icon = card.icon;
 
-        {/* Main Stats */}
-        {loading ? (
-          <section className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
+            return (
               <div
-                key={index}
-                className="h-32 animate-pulse rounded-xl border bg-white"
-              />
-            ))}
-          </section>
-        ) : (
-          <section className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-500">Total Revenue</p>
+                key={card.title}
+                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
+                    <Icon className="h-5 w-5 text-slate-700" />
+                  </div>
 
-                <TrendingUp className="h-5 w-5 text-slate-500" />
+                  <span className="text-3xl font-bold text-slate-900">
+                    {card.value}
+                  </span>
+                </div>
+
+                <h2 className="mt-5 font-semibold text-slate-900">
+                  {card.title}
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {card.description}
+                </p>
               </div>
-
-              <p className="mt-3 text-2xl font-bold text-slate-900">
-                {formatCurrency(summary?.totalRevenue ?? 0)}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-500">
-                From completed sales
-              </p>
-            </div>
-
-            <div className="rounded-xl border bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-500">Transactions</p>
-
-                <ShoppingCart className="h-5 w-5 text-slate-500" />
-              </div>
-
-              <p className="mt-3 text-2xl font-bold text-slate-900">
-                {summary?.totalSales ?? 0}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-500">Completed sales</p>
-            </div>
-
-            <div className="rounded-xl border bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-500">Medicines</p>
-
-                <Pill className="h-5 w-5 text-slate-500" />
-              </div>
-
-              <p className="mt-3 text-2xl font-bold text-slate-900">
-                {summary?.medicines ?? 0}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-500">Inventory medicines</p>
-            </div>
-
-            <div className="rounded-xl border bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-500">Stock Alerts</p>
-
-                <AlertTriangle className="h-5 w-5 text-slate-500" />
-              </div>
-
-              <p className="mt-3 text-2xl font-bold text-slate-900">
-                {(summary?.lowStock ?? 0) + (summary?.outOfStock ?? 0)}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-500">Low or out of stock</p>
-            </div>
-          </section>
-        )}
+            );
+          })}
+        </div>
 
         {/* Inventory + Subscription */}
-        <section className="mb-8 grid gap-6 lg:grid-cols-2">
+        <div className="mt-8 grid gap-8 lg:grid-cols-2">
           {/* Inventory Status */}
-          <div className="rounded-xl border bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-xl font-semibold text-slate-900">
                   Inventory Status
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Current medicine stock levels.
+                  Current stock overview
                 </p>
               </div>
 
-              <Boxes className="h-5 w-5 text-slate-500" />
+              <Boxes className="h-6 w-6 text-slate-500" />
             </div>
 
-            <div className="mt-6 grid grid-cols-3 gap-3">
-              <div className="rounded-lg bg-slate-50 p-4 text-center">
-                <p className="text-2xl font-bold text-slate-900">
-                  {summary?.available ?? 0}
+            <div className="mt-6 grid gap-4 sm:grid-cols-3">
+              {/* Available */}
+              <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-green-700">
+                  Available
                 </p>
 
-                <p className="mt-1 text-xs text-slate-500">Available</p>
+                <p className="mt-2 text-2xl font-bold text-green-800">
+                  {data.inventoryStatus?.available ?? 0}
+                </p>
               </div>
 
-              <div className="rounded-lg bg-slate-50 p-4 text-center">
-                <p className="text-2xl font-bold text-slate-900">
-                  {summary?.lowStock ?? 0}
+              {/* Low Stock */}
+              <div className="rounded-xl border border-yellow-100 bg-yellow-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-yellow-700">
+                  Low Stock
                 </p>
 
-                <p className="mt-1 text-xs text-slate-500">Low Stock</p>
+                <p className="mt-2 text-2xl font-bold text-yellow-800">
+                  {data.inventoryStatus?.lowStock ?? 0}
+                </p>
               </div>
 
-              <div className="rounded-lg bg-slate-50 p-4 text-center">
-                <p className="text-2xl font-bold text-slate-900">
-                  {summary?.outOfStock ?? 0}
+              {/* Out of Stock */}
+              <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-red-700">
+                  Out of Stock
                 </p>
 
-                <p className="mt-1 text-xs text-slate-500">Out of Stock</p>
+                <p className="mt-2 text-2xl font-bold text-red-800">
+                  {data.inventoryStatus?.outOfStock ?? 0}
+                </p>
               </div>
             </div>
 
             <Link
               href="/dashboard/inventory"
-              className="mt-6 inline-flex rounded-lg border px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-slate-700 transition hover:text-slate-900"
             >
-              Manage Inventory →
+              Manage Inventory
+              <ChevronRight className="h-4 w-4" />
             </Link>
           </div>
 
           {/* Subscription */}
-          <div className="rounded-xl border bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-xl font-semibold text-slate-900">
                   Subscription
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Current SmartPharma access.
+                  Your current SmartPharma plan
                 </p>
               </div>
 
-              <CreditCard className="h-5 w-5 text-slate-500" />
+              <CreditCard className="h-6 w-6 text-slate-500" />
             </div>
 
-            {subscription ? (
-              <div className="mt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-500">Plan</p>
+            <div className="mt-6 rounded-xl bg-slate-50 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm font-medium text-slate-500">Plan</span>
 
-                    <p className="mt-1 text-xl font-bold text-slate-900">
-                      {subscription.plan}
-                    </p>
-                  </div>
-
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      subscription.status === "ACTIVE"
-                        ? "bg-green-100 text-green-700"
-                        : subscription.status === "EXPIRED"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-slate-100 text-slate-700"
-                    }`}
-                  >
-                    {getSubscriptionLabel(subscription.status)}
-                  </span>
-                </div>
-
-                <div className="mt-5 rounded-lg bg-slate-50 p-4">
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <Clock className="h-4 w-4" />
-                    Expires
-                  </div>
-
-                  <p className="mt-1 font-semibold text-slate-900">
-                    {formatDate(subscription.renewalDate)}
-                  </p>
-                </div>
+                <span className="font-semibold text-slate-900">
+                  {data.subscription?.plan || "Not available"}
+                </span>
               </div>
-            ) : (
-              <div className="mt-6 rounded-lg bg-slate-50 p-5">
-                <p className="font-semibold text-slate-900">
-                  No active subscription
-                </p>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Subscribe to manage pharmacy operations.
-                </p>
+              <div className="mt-4 flex items-center justify-between gap-4">
+                <span className="text-sm font-medium text-slate-500">
+                  Status
+                </span>
+
+                <span
+                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${getSubscriptionStatusClasses(
+                    data.subscription?.status,
+                  )}`}
+                >
+                  {data.subscription?.status || "Not available"}
+                </span>
               </div>
-            )}
+
+              <div className="mt-4 flex items-center justify-between gap-4">
+                <span className="text-sm font-medium text-slate-500">
+                  Renewal
+                </span>
+
+                <span className="font-semibold text-slate-900">
+                  {data.subscription?.renewalDate
+                    ? new Date(
+                        data.subscription.renewalDate,
+                      ).toLocaleDateString()
+                    : "Not scheduled"}
+                </span>
+              </div>
+            </div>
 
             <Link
               href="/dashboard/subscription"
-              className="mt-6 inline-flex rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-slate-700 transition hover:text-slate-900"
             >
-              Manage Subscription →
+              Manage Subscription
+              <ChevronRight className="h-4 w-4" />
             </Link>
           </div>
-        </section>
+        </div>
 
-        {/* Top Selling + Demand */}
-        <section className="mb-8 grid gap-6 lg:grid-cols-2">
-          {/* Top Selling */}
-          <div className="rounded-xl border bg-white p-6 shadow-sm">
-            <div className="mb-5">
-              <h2 className="text-lg font-bold text-slate-900">
-                Top Selling Medicines
+        {/* Patient Medicine Demand */}
+        <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">
+                Patient Medicine Demand
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                Medicines with the highest sales volume.
+                Medicines patients are searching for
               </p>
             </div>
 
-            {!dashboard?.topSelling?.length ? (
-              <div className="rounded-lg border border-dashed p-8 text-center">
-                <p className="font-medium text-slate-900">No sales data yet</p>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Completed sales will appear here.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {dashboard.topSelling.map((item, index) => (
-                  <div
-                    key={`${item.medicine}-${index}`}
-                    className="flex items-center justify-between rounded-lg bg-slate-50 p-4"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-700">
-                        {index + 1}
-                      </div>
-
-                      <div>
-                        <p className="font-semibold text-slate-900">
-                          {item.medicine || "Unknown medicine"}
-                        </p>
-
-                        <p className="text-xs text-slate-500">
-                          {item.quantity} units sold
-                        </p>
-                      </div>
-                    </div>
-
-                    <p className="font-semibold text-slate-900">
-                      {formatCurrency(item.revenue)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
+            <BarChart3 className="h-6 w-6 text-slate-500" />
           </div>
 
-          {/* Demand */}
-          <div className="rounded-xl border bg-white p-6 shadow-sm">
-            <div className="mb-5">
-              <h2 className="text-lg font-bold text-slate-900">
-                Medicine Demand
-              </h2>
+          {demand.length > 0 ? (
+            <div className="mt-6 divide-y divide-slate-100">
+              {demand.slice(0, 8).map((item, index) => (
+                <div
+                  key={`${item.medicineName}-${index}`}
+                  className="flex items-center justify-between py-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-sm font-semibold text-slate-700">
+                      {index + 1}
+                    </div>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Most searched medicines and their supply.
+                    <span className="text-sm font-medium text-slate-900">
+                      {item.medicineName}
+                    </span>
+                  </div>
+
+                  <span className="text-sm font-semibold text-slate-600">
+                    {item.searchCount} searches
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-6 rounded-xl bg-slate-50 p-6 text-center">
+              <p className="text-sm text-slate-500">
+                No patient medicine demand data is available yet.
               </p>
             </div>
+          )}
+        </div>
 
-            {!dashboard?.demand?.length ? (
-              <div className="rounded-lg border border-dashed p-8 text-center">
-                <p className="font-medium text-slate-900">No demand data yet</p>
+        {/* Pharmacy Management */}
+        <div className="mt-8">
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+            Pharmacy Management
+          </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Medicine searches will appear here.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {dashboard.demand.map((item, index) => (
-                  <div
-                    key={`${item.medicine}-${index}`}
-                    className="rounded-lg bg-slate-50 p-4"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-900">
-                          {item.medicine || "Unknown medicine"}
-                        </p>
+          <p className="mt-2 text-slate-600">
+            Quickly access the tools and settings for your pharmacy.
+          </p>
 
-                        <p className="mt-1 text-xs text-slate-500">
-                          {item.searches} searches
-                        </p>
-                      </div>
-
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                        {item.supply} in stock
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Quick Actions */}
-        <section>
-          <div className="mb-4">
-            <h2 className="text-xl font-bold text-slate-900">
-              Pharmacy Management
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Select a section to continue.
-            </p>
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {dashboardCards.map((card) => {
-              const Icon = card.icon;
+          <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {managementLinks.map((item) => {
+              const Icon = item.icon;
 
               return (
                 <Link
-                  key={card.title}
-                  href={card.href}
-                  className="group rounded-xl border bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  key={item.href}
+                  href={item.href}
+                  className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
                 >
-                  <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
                     <Icon className="h-5 w-5 text-slate-700" />
                   </div>
 
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    {card.title}
-                  </h3>
+                  <div className="mt-5 flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">
+                        {item.title}
+                      </h3>
 
-                  <p className="mt-2 text-sm leading-6 text-slate-500">
-                    {card.description}
-                  </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-500">
+                        {item.description}
+                      </p>
+                    </div>
 
-                  <p className="mt-5 text-sm font-semibold text-slate-900">
-                    Open section →
-                  </p>
+                    <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-slate-400 transition group-hover:translate-x-1 group-hover:text-slate-700" />
+                  </div>
                 </Link>
               );
             })}
           </div>
-        </section>
-      </main>
-    </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto max-w-7xl px-6 py-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-500">
+              SmartPharma Pharmacy Portal
+            </p>
+
+            <div className="flex flex-wrap gap-5 text-sm">
+              <Link
+                href="/dashboard"
+                className="text-slate-600 transition hover:text-slate-900"
+              >
+                Dashboard
+              </Link>
+
+              <Link
+                href="/dashboard/inventory"
+                className="text-slate-600 transition hover:text-slate-900"
+              >
+                Inventory
+              </Link>
+
+              <Link
+                href="/dashboard/analytics"
+                className="text-slate-600 transition hover:text-slate-900"
+              >
+                Analytics
+              </Link>
+
+              <Link
+                href="/dashboard/account"
+                className="text-slate-600 transition hover:text-slate-900"
+              >
+                Account
+              </Link>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </main>
   );
 }

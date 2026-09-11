@@ -18,43 +18,38 @@ model User {
   updatedAt    DateTime @updatedAt
 
   pharmacy Pharmacy? @relation(fields: [pharmacyId], references: [id])
+
+  @@index([email])
+  @@index([pharmacyId])
 }
 
 model Pharmacy {
-  id           Int     @id @default(autoincrement())
-  name         String
-  address      String
-  phone        String?
-  email        String?
-  latitude     Float?
-  longitude    Float?
-  openingHours String?
-
-  // Business verification
-  tinNumber            String? @unique
+  id                   Int                @id @default(autoincrement())
+  name                 String
+  address              String
+  phone                String?
+  email                String?
+  latitude             Float?
+  longitude            Float?
+  openingHours         String?
+  tinNumber            String?            @unique
   businessRegistration String?
   businessLicense      String?
   pharmacyLicense      String?
   pharmacyPhoto        String?
-
-  // Owner identity verification
-  ownerIdNumber   String?
-  ownerIdDocument String?
-
-  // Verification status
-  verificationStatus VerificationStatus @default(PENDING)
-  verificationReason String?
-  verifiedAt         DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  ownerIdNumber        String?
+  ownerIdDocument      String?
+  verificationStatus   VerificationStatus @default(PENDING)
+  verificationReason   String?
+  verifiedAt           DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   inventory    Inventory[]
-  searches     MedicineSearch[]
   payments     Payment[]
-  sales        Sale[]
   subscription Subscription?
   users        User[]
+  feedbacks    Feedback[]
 }
 
 model Medicine {
@@ -67,7 +62,6 @@ model Medicine {
 
   inventory Inventory[]
   searches  MedicineSearch[]
-  saleItems SaleItem[]
 
   @@index([name])
   @@index([genericName])
@@ -91,45 +85,17 @@ model Inventory {
   @@unique([pharmacyId, medicineId])
 }
 
-model Sale {
-  id          Int      @id @default(autoincrement())
-  pharmacyId  Int
-  totalAmount Float
-  createdAt   DateTime @default(now())
-
-  pharmacy Pharmacy   @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
-  items    SaleItem[]
-
-  @@index([pharmacyId])
-  @@index([createdAt])
-}
-
-model SaleItem {
-  id         Int   @id @default(autoincrement())
-  saleId     Int
-  medicineId Int
-  quantity   Int
-  unitPrice  Float
-  totalPrice Float
-
-  medicine Medicine @relation(fields: [medicineId], references: [id])
-  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-
-  @@index([medicineId])
-}
-
 model MedicineSearch {
   id         Int      @id @default(autoincrement())
-  pharmacyId Int
-  medicineId Int
+  query      String
+  medicineId Int?
   createdAt  DateTime @default(now())
 
-  medicine Medicine @relation(fields: [medicineId], references: [id], onDelete: Cascade)
-  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  medicine Medicine? @relation(fields: [medicineId], references: [id], onDelete: Cascade)
 
-  @@index([medicineId])
-  @@index([pharmacyId])
   @@index([createdAt])
+  @@index([query])
+  @@index([medicineId])
 }
 
 model Subscription {
@@ -157,14 +123,64 @@ model Payment {
   screenshotSize     Int?
   verifiedAt         DateTime?
   rejectedAt         DateTime?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
 
-  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  bankAccountId Int?
 
-  @@index([pharmacyId])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pharmacy    Pharmacy     @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+
+  @@index([bankAccountId])
+}
+
+model BankAccount {
+  id            Int     @id @default(autoincrement())
+  bankName      String
+  accountName   String
+  accountNumber String
+  branch        String?
+  instructions  String?
+  isActive      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments Payment[]
+
+  @@index([isActive])
+}
+
+model TransportationRate {
+  id        Int      @id @default(autoincrement())
+  type      String   @unique
+  ratePerKm Float
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Feedback {
+  id         Int                @id @default(autoincrement())
+  senderType FeedbackSenderType
+  name       String?
+  email      String?
+  pharmacyId Int?
+  category   String
+  message    String
+  status     FeedbackStatus     @default(NEW)
+  adminReply String?
+  repliedAt  DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  pharmacy Pharmacy? @relation(fields: [pharmacyId], references: [id], onDelete: SetNull)
+
+  @@index([senderType])
   @@index([status])
   @@index([createdAt])
+  @@index([pharmacyId])
 }
 
 enum UserRole {
@@ -181,6 +197,8 @@ enum StockStatus {
 
 enum SubscriptionPlan {
   BASIC
+  ONE_WEEK
+  ONE_MONTH
   STANDARD
   PROFESSIONAL
   ENTERPRISE
@@ -203,4 +221,24 @@ enum VerificationStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum TransportationType {
+  WALKING
+  MOTORCYCLE
+  BUS
+  TAXI
+  PRIVATE_CAR
+}
+
+enum FeedbackSenderType {
+  PATIENT
+  PHARMACY
+}
+
+enum FeedbackStatus {
+  NEW
+  REVIEWING
+  RESPONDED
+  RESOLVED
 }

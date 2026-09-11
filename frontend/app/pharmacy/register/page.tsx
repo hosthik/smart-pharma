@@ -1,9 +1,8 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useState } from "react";
-
 import Link from "next/link";
-
+import Image from "next/image";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -80,9 +79,9 @@ export default function PharmacyRegisterPage() {
     useState<Record<FileField, File | null>>(initialFiles);
 
   const [loading, setLoading] = useState(false);
+  const [detectingLocation, setDetectingLocation] = useState(false);
 
   const [error, setError] = useState("");
-
   const [success, setSuccess] = useState("");
 
   function updateField(field: keyof FormState, value: string) {
@@ -90,6 +89,62 @@ export default function PharmacyRegisterPage() {
       ...current,
       [field]: value,
     }));
+  }
+
+  function detectLocation() {
+    setError("");
+    setSuccess("");
+
+    if (!navigator.geolocation) {
+      setError("Location detection is not supported by your browser.");
+      return;
+    }
+
+    setDetectingLocation(true);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latitude = position.coords.latitude.toFixed(6);
+        const longitude = position.coords.longitude.toFixed(6);
+
+        setForm((current) => ({
+          ...current,
+          latitude,
+          longitude,
+        }));
+
+        setDetectingLocation(false);
+      },
+      (locationError) => {
+        setDetectingLocation(false);
+
+        switch (locationError.code) {
+          case locationError.PERMISSION_DENIED:
+            setError(
+              "Location permission was denied. Please allow location access in your browser and try again.",
+            );
+            break;
+
+          case locationError.POSITION_UNAVAILABLE:
+            setError(
+              "Your current location could not be determined. Please try again.",
+            );
+            break;
+
+          case locationError.TIMEOUT:
+            setError("Location detection timed out. Please try again.");
+            break;
+
+          default:
+            setError("Unable to detect your location.");
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      },
+    );
   }
 
   function handleFileChange(
@@ -263,10 +318,9 @@ export default function PharmacyRegisterPage() {
       formData.append("password", form.password);
 
       /*
-       * Coordinates are optional.
-       *
-       * Do not send empty strings because the backend
-       * expects numbers when these fields are present.
+       * Send coordinates only when they exist.
+       * Empty strings are not sent because the backend
+       * expects numeric values when coordinates are present.
        */
       if (form.latitude.trim()) {
         formData.append("latitude", String(Number(form.latitude)));
@@ -339,8 +393,15 @@ export default function PharmacyRegisterPage() {
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-sm font-bold text-white">
-              SP
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
+              <Image
+                src="/images/smartpharma logo.png"
+                alt="SmartPharma"
+                width={56}
+                height={56}
+                className="h-full w-full object-contain"
+                priority
+              />
             </div>
 
             <div>
@@ -474,8 +535,33 @@ export default function PharmacyRegisterPage() {
             <SectionHeader
               number="2"
               title="Pharmacy location"
-              description="Coordinates are optional. You can add them now or later."
+              description="Detect your current location automatically or enter the coordinates manually."
             />
+
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={detectLocation}
+                disabled={detectingLocation}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {detectingLocation ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Detecting location...
+                  </>
+                ) : (
+                  <>
+                    <MapPin className="h-5 w-5" />
+                    Detect my location
+                  </>
+                )}
+              </button>
+
+              <p className="mt-2 text-xs text-slate-500">
+                Your browser will ask for permission to access your location.
+              </p>
+            </div>
 
             <div className="mt-6 grid gap-5 md:grid-cols-2">
               <Input
@@ -501,12 +587,34 @@ export default function PharmacyRegisterPage() {
               />
             </div>
 
+            {form.latitude && form.longitude && (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800">
+                      Location detected successfully
+                    </p>
+
+                    <p className="mt-1 text-sm text-emerald-700">
+                      Latitude: {form.latitude}
+                    </p>
+
+                    <p className="text-sm text-emerald-700">
+                      Longitude: {form.longitude}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="mt-4 flex items-start gap-3 rounded-xl bg-slate-50 p-4">
               <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
 
               <p className="text-sm leading-6 text-slate-600">
-                Location coordinates help patients find your pharmacy on the
-                SmartPharma map. Leaving these fields empty is allowed.
+                These coordinates help patients find your pharmacy on the
+                SmartPharma map. You can also edit them manually if necessary.
               </p>
             </div>
           </section>

@@ -1,324 +1,212 @@
-import {
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
-
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 @Injectable()
 export class AnalyticsService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getAnalytics(
     pharmacyId: number,
     startDate?: string,
     endDate?: string,
   ) {
-    const pharmacy =
-      await this.prisma.pharmacy.findUnique({
-        where: {
-          id: pharmacyId,
-        },
-      });
+    const pharmacy = await this.prisma.pharmacy.findUnique({
+      where: {
+        id: pharmacyId,
+      },
+    });
 
     if (!pharmacy) {
-      throw new NotFoundException(
-        "Pharmacy not found.",
-      );
+      throw new NotFoundException("Pharmacy not found.");
     }
 
-    const start = startDate
-      ? new Date(startDate)
-      : undefined;
+    const patientSearchDateFilter: {
+      createdAt?: {
+        gte?: Date;
+        lte?: Date;
+      };
+    } = {};
 
-    const end = endDate
-      ? new Date(endDate)
-      : undefined;
+    if (startDate) {
+      const start = new Date(startDate);
 
-    if (
-      start &&
-      Number.isNaN(start.getTime())
-    ) {
-      throw new Error(
-        "Invalid startDate.",
-      );
+      if (!Number.isNaN(start.getTime())) {
+        patientSearchDateFilter.createdAt = {
+          ...(patientSearchDateFilter.createdAt ?? {}),
+          gte: start,
+        };
+      }
     }
 
-    if (
-      end &&
-      Number.isNaN(end.getTime())
-    ) {
-      throw new Error(
-        "Invalid endDate.",
-      );
-    }
+    if (endDate) {
+      const end = new Date(endDate);
 
-    const saleDateFilter =
-      start || end
-        ? {
-            createdAt: {
-              ...(start
-                ? { gte: start }
-                : {}),
-              ...(end
-                ? { lte: end }
-                : {}),
-            },
-          }
-        : {};
+      if (!Number.isNaN(end.getTime())) {
+        end.setHours(23, 59, 59, 999);
+
+        patientSearchDateFilter.createdAt = {
+          ...(patientSearchDateFilter.createdAt ?? {}),
+          lte: end,
+        };
+      }
+    }
 
     const [
-      sales,
-      revenue,
-      saleItems,
-      inventory,
-      searches,
+      totalMedicines,
+      available,
+      lowStock,
+      outOfStock,
+      totalUnitsAggregate,
+      patientSearches,
+      demandGroups,
     ] = await Promise.all([
-      this.prisma.sale.count({
+      this.prisma.inventory.count({
         where: {
           pharmacyId,
-          ...saleDateFilter,
         },
       }),
 
-      this.prisma.sale.aggregate({
+      this.prisma.inventory.count({
         where: {
           pharmacyId,
-          ...saleDateFilter,
+          stockStatus: "AVAILABLE",
+        },
+      }),
+
+      this.prisma.inventory.count({
+        where: {
+          pharmacyId,
+          stockStatus: "LOW_STOCK",
+        },
+      }),
+
+      this.prisma.inventory.count({
+        where: {
+          pharmacyId,
+          stockStatus: "OUT_OF_STOCK",
+        },
+      }),
+
+      this.prisma.inventory.aggregate({
+        where: {
+          pharmacyId,
         },
         _sum: {
-          totalAmount: true,
+          quantity: true,
         },
       }),
 
-      this.prisma.saleItem.findMany({
+      // Global public patient searches.
+      this.prisma.medicineSearch.count({
+        where: patientSearchDateFilter,
+      }),
+
+      // Global search demand.
+      this.prisma.medicineSearch.groupBy({
+        by: ["medicineId"],
         where: {
-          sale: {
-            pharmacyId,
-            ...saleDateFilter,
+          medicineId: {
+            not: null,
+          },
+          ...patientSearchDateFilter,
+        },
+        _count: {
+          _all: true,
+        },
+        orderBy: {
+          _count: {
+            medicineId: "desc",
           },
         },
-        include: {
-          medicine: true,
-        },
-      }),
-
-      this.prisma.inventory.findMany({
-        where: {
-          pharmacyId,
-        },
-        include: {
-          medicine: true,
-        },
-      }),
-
-      this.prisma.medicineSearch.findMany({
-        where: {
-          pharmacyId,
-          ...(start || end
-            ? {
-                createdAt: {
-                  ...(start
-                    ? { gte: start }
-                    : {}),
-                  ...(end
-                    ? { lte: end }
-                    : {}),
-                },
-              }
-            : {}),
-        },
-        include: {
-          medicine: true,
-        },
+        take: 10,
       }),
     ]);
 
-    const totalRevenue =
-      revenue._sum.totalAmount ?? 0;
+    const totalUnits =
+      totalUnitsAggregate._sum?.quantity ?? 0;
 
-    const totalUnitsSold =
-      saleItems.reduce(
-        (sum, item) =>
-          sum + item.quantity,
-        0,
-      );
-
-    const topSellingMap =
-      new Map<
-        number,
-        {
-          medicineId: number;
-          medicine: string;
-          quantity: number;
-          revenue: number;
-        }
-      >();
-
-    for (const item of saleItems) {
-      const existing =
-        topSellingMap.get(
-          item.medicineId,
-        );
-
-      if (existing) {
-        existing.quantity +=
-          item.quantity;
-
-        existing.revenue +=
-          item.totalPrice;
-      } else {
-        topSellingMap.set(
-          item.medicineId,
-          {
-            medicineId:
-              item.medicineId,
-            medicine:
-              item.medicine.name,
-            quantity:
-              item.quantity,
-            revenue:
-              item.totalPrice,
-          },
-        );
-      }
-    }
-
-    const topSelling =
-      Array.from(
-        topSellingMap.values(),
-      )
-        .sort(
-          (a, b) =>
-            b.quantity -
-            a.quantity,
+    const demand = await Promise.all(
+      demandGroups
+        .filter(
+          (
+            item,
+          ): item is typeof item & {
+            medicineId: number;
+          } => item.medicineId !== null,
         )
-        .slice(0, 10);
+        .map(async (item) => {
+          const medicine =
+            await this.prisma.medicine.findUnique({
+              where: {
+                id: item.medicineId,
+              },
+            });
 
-    const demandMap =
-      new Map<
-        number,
-        {
-          medicineId: number;
-          medicine: string;
-          searches: number;
-        }
-      >();
-
-    for (const search of searches) {
-      const existing =
-        demandMap.get(
-          search.medicineId,
-        );
-
-      if (existing) {
-        existing.searches += 1;
-      } else {
-        demandMap.set(
-          search.medicineId,
-          {
-            medicineId:
-              search.medicineId,
-            medicine:
-              search.medicine.name,
-            searches: 1,
-          },
-        );
-      }
-    }
-
-    const demand =
-      Array.from(
-        demandMap.values(),
-      )
-        .sort(
-          (a, b) =>
-            b.searches -
-            a.searches,
-        )
-        .slice(0, 10)
-        .map((item) => {
-          const stock =
-            inventory.find(
-              (entry) =>
-                entry.medicineId ===
-                item.medicineId,
-            );
+          const inventory =
+            await this.prisma.inventory.findUnique({
+              where: {
+                pharmacyId_medicineId: {
+                  pharmacyId,
+                  medicineId: item.medicineId,
+                },
+              },
+            });
 
           return {
-            ...item,
-            supply:
-              stock?.quantity ?? 0,
+            medicineId: item.medicineId,
+            medicineName:
+              medicine?.name ?? "Unknown Medicine",
+            searchCount:
+              item._count?._all ?? 0,
+            pharmacyStock:
+              inventory?.quantity ?? 0,
+            pharmacyPrice:
+              inventory?.price ?? 0,
             stockStatus:
-              stock?.stockStatus ??
+              inventory?.stockStatus ??
               "OUT_OF_STOCK",
           };
-        });
-
-    const inventorySummary = {
-      totalMedicines:
-        inventory.length,
-
-      available:
-        inventory.filter(
-          (item) =>
-            item.stockStatus ===
-            "AVAILABLE",
-        ).length,
-
-      lowStock:
-        inventory.filter(
-          (item) =>
-            item.stockStatus ===
-            "LOW_STOCK",
-        ).length,
-
-      outOfStock:
-        inventory.filter(
-          (item) =>
-            item.stockStatus ===
-            "OUT_OF_STOCK",
-        ).length,
-
-      totalUnits:
-        inventory.reduce(
-          (sum, item) =>
-            sum + item.quantity,
-          0,
-        ),
-    };
+        }),
+    );
 
     return {
       pharmacy: {
         id: pharmacy.id,
         name: pharmacy.name,
+        address: pharmacy.address,
+        phone: pharmacy.phone,
+        email: pharmacy.email,
+        verificationStatus: pharmacy.verificationStatus,
       },
 
       period: {
-        startDate:
-          startDate ?? null,
-        endDate:
-          endDate ?? null,
+        startDate: startDate ?? null,
+        endDate: endDate ?? null,
       },
 
       summary: {
-        sales,
-        totalRevenue,
-        totalUnitsSold,
-        averageSaleValue:
-          sales > 0
-            ? totalRevenue / sales
-            : 0,
+        totalMedicines,
+        available,
+        lowStock,
+        outOfStock,
+        totalUnits,
+        patientSearches,
       },
 
-      inventory:
-        inventorySummary,
-
-      topSelling,
+      inventory: {
+        totalMedicines,
+        available,
+        lowStock,
+        outOfStock,
+        totalUnits,
+      },
 
       demand,
+
+      patientDemand: demand,
+
+      mostSearchedMedicine:
+        demand[0] ?? null,
     };
   }
 }

@@ -7,51 +7,125 @@ import {
   ParseIntPipe,
   Patch,
   Post,
-} from '@nestjs/common';
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 
-import { InventoryService } from './inventory.service.js';
-import { CreateInventoryDto } from './dto/create-inventory.dto.js';
-import { UpdateInventoryDto } from './dto/update-inventory.dto.js';
+import type { Request } from "express";
 
-@Controller('inventory')
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { InventoryService } from "./inventory.service.js";
+import { CreateInventoryDto } from "./dto/create-inventory.dto.js";
+import { UpdateInventoryDto } from "./dto/update-inventory.dto.js";
+
+type AuthenticatedRequest = Request & {
+  user?: {
+    sub: number;
+    email: string;
+    role:
+      | "ADMIN"
+      | "PHARMACY_OWNER"
+      | "PHARMACY_STAFF";
+    pharmacyId: number | null;
+  };
+};
+
+@Controller("inventory")
+@UseGuards(JwtAuthGuard)
 export class InventoryController {
   constructor(
     private readonly inventoryService: InventoryService,
   ) {}
 
-  @Post()
-  create(@Body() dto: CreateInventoryDto) {
-    return this.inventoryService.create(dto);
-  }
-
-  @Get('pharmacy/:pharmacyId')
-  findByPharmacy(
-    @Param('pharmacyId', ParseIntPipe) pharmacyId: number,
+  @Get("pharmacy/:pharmacyId")
+  async findByPharmacy(
+    @Param("pharmacyId", ParseIntPipe) pharmacyId: number,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.inventoryService.findByPharmacy(
+    const user = request.user;
+
+    if (!user) {
+      throw new Error("Authenticated user was not found.");
+    }
+
+    return this.inventoryService.findAll(
       pharmacyId,
+      user.role,
+      user.pharmacyId,
     );
   }
 
-  @Get(':id')
-  findOne(
-    @Param('id', ParseIntPipe) id: number,
+  @Get(":id")
+  async findOne(
+    @Param("id", ParseIntPipe) id: number,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.inventoryService.findOne(id);
+    const user = request.user;
+
+    if (!user) {
+      throw new Error("Authenticated user was not found.");
+    }
+
+    return this.inventoryService.findOne(
+      id,
+      user.role,
+      user.pharmacyId,
+    );
   }
 
-  @Patch(':id')
-  update(
-    @Param('id', ParseIntPipe) id: number,
+  @Post()
+  async create(
+    @Body() dto: CreateInventoryDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const user = request.user;
+
+    if (!user) {
+      throw new Error("Authenticated user was not found.");
+    }
+
+    return this.inventoryService.create(
+      dto,
+      user.role,
+      user.pharmacyId,
+    );
+  }
+
+  @Patch(":id")
+  async update(
+    @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateInventoryDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.inventoryService.update(id, dto);
+    const user = request.user;
+
+    if (!user) {
+      throw new Error("Authenticated user was not found.");
+    }
+
+    return this.inventoryService.update(
+      id,
+      dto,
+      user.role,
+      user.pharmacyId,
+    );
   }
 
-  @Delete(':id')
-  remove(
-    @Param('id', ParseIntPipe) id: number,
+  @Delete(":id")
+  async remove(
+    @Param("id", ParseIntPipe) id: number,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.inventoryService.remove(id);
+    const user = request.user;
+
+    if (!user) {
+      throw new Error("Authenticated user was not found.");
+    }
+
+    return this.inventoryService.remove(
+      id,
+      user.role,
+      user.pharmacyId,
+    );
   }
 }

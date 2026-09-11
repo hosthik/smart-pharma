@@ -26,16 +26,14 @@ export function getCurrentUser(): SmartPharmaUser | null {
     return null;
   }
 
-  const rawUser =
-    localStorage.getItem(USER_KEY);
+  const rawUser = localStorage.getItem(USER_KEY);
 
   if (!rawUser) {
     return null;
   }
 
   try {
-    const user =
-      JSON.parse(rawUser) as SmartPharmaUser;
+    const user = JSON.parse(rawUser) as SmartPharmaUser;
 
     if (
       !user ||

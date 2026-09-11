@@ -1,76 +1,21 @@
 import Link from "next/link";
-import { MapPin, Pill, Store, Home as HomeIcon } from "lucide-react";
+import {
+  ArrowRight,
+  Calculator,
+  ClipboardPlus,
+  MapPin,
+  Pill,
+  Search,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import PatientNavigation from "@/components/patient/PatientNavigation";
 
 export default function Home() {
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Navigation */}
-      <nav className="border-b bg-white">
-        <div className="mx-auto flex min-h-[72px] max-w-7xl items-center justify-between px-6">
-          <Link href="/" className="flex shrink-0 items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-sm font-bold text-white">
-              SP
-            </div>
-
-            <div className="leading-none">
-              <p className="text-lg font-bold tracking-tight text-slate-900">
-                SmartPharma
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                Medicine Discovery
-              </p>
-            </div>
-          </Link>
-
-          <div className="hidden items-center gap-6 md:flex">
-            <Link
-              href="/"
-              className="flex items-center gap-2 text-sm font-medium text-slate-900"
-            >
-              <HomeIcon className="h-4 w-4" />
-              Home
-            </Link>
-
-            <Link
-              href="/find-medicine"
-              className="text-sm font-medium text-slate-600 hover:text-slate-900"
-            >
-              Find Medicine
-            </Link>
-
-            <Link
-              href="/pharmacies"
-              className="text-sm font-medium text-slate-600 hover:text-slate-900"
-            >
-              Pharmacies
-            </Link>
-
-            <Link
-              href="/about"
-              className="text-sm font-medium text-slate-600 hover:text-slate-900"
-            >
-              About
-            </Link>
-
-            <Link
-              href="/contact"
-              className="text-sm font-medium text-slate-600 hover:text-slate-900"
-            >
-              Contact
-            </Link>
-
-            <Link href="/pharmacy/login">
-              <Button>Pharmacy Login</Button>
-            </Link>
-          </div>
-
-          <Link href="/pharmacy/login" className="md:hidden">
-            <Button size="sm">Pharmacy Login</Button>
-          </Link>
-        </div>
-      </nav>
+      <PatientNavigation activePath="/" />
 
       {/* Hero */}
       <section className="border-b bg-white">
@@ -90,13 +35,14 @@ export default function Home() {
 
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
               Search medicine availability, compare pharmacy prices, find
-              pharmacy locations, and see where your medicine is available.
+              pharmacy locations, scan prescriptions, and manage your medicine
+              needs from one simple platform.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link href="/find-medicine">
                 <Button size="lg" className="w-full sm:w-auto">
-                  <Pill className="mr-2 h-5 w-5" />
+                  <Search className="mr-2 h-5 w-5" />
                   Find Medicine
                 </Button>
               </Link>
@@ -116,70 +62,144 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Features */}
-      <section className="mx-auto grid max-w-7xl gap-6 px-6 py-16 md:grid-cols-3">
-        <Link href="/find-medicine" className="group">
-          <Card className="h-full transition group-hover:-translate-y-1 group-hover:shadow-md">
-            <CardHeader>
-              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
-                <Pill className="h-5 w-5 text-slate-700" />
-              </div>
+      {/* Patient Features */}
+      <section className="mx-auto max-w-7xl px-6 py-16">
+        <div className="max-w-2xl">
+          <p className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+            SmartPharma Tools
+          </p>
 
-              <CardTitle>Find Medicine</CardTitle>
-            </CardHeader>
+          <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
+            Everything you need to find medicine information.
+          </h2>
 
-            <CardContent className="text-muted-foreground">
-              Search for medicines and check their availability at pharmacies.
-            </CardContent>
-          </Card>
-        </Link>
+          <p className="mt-4 text-base leading-7 text-slate-600">
+            SmartPharma brings useful medicine and pharmacy tools together to
+            make your search easier.
+          </p>
+        </div>
 
-        <Link href="/pharmacies" className="group">
-          <Card className="h-full transition group-hover:-translate-y-1 group-hover:shadow-md">
-            <CardHeader>
-              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
-                <MapPin className="h-5 w-5 text-slate-700" />
-              </div>
+        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <Link href="/find-medicine" className="group">
+            <Card className="h-full transition group-hover:-translate-y-1 group-hover:shadow-md">
+              <CardHeader>
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
+                  <Search className="h-5 w-5 text-slate-700" />
+                </div>
 
-              <CardTitle>Find Pharmacies</CardTitle>
-            </CardHeader>
+                <CardTitle>Find Medicine</CardTitle>
+              </CardHeader>
 
-            <CardContent className="text-muted-foreground">
-              Browse pharmacies, view available medicines, prices, addresses,
-              and contact information.
-            </CardContent>
-          </Card>
-        </Link>
+              <CardContent className="text-muted-foreground">
+                Search for medicines and check their availability, prices, and
+                pharmacies.
+              </CardContent>
+            </Card>
+          </Link>
 
-        <Link href="/pharmacy/login" className="group">
-          <Card className="h-full transition group-hover:-translate-y-1 group-hover:shadow-md">
-            <CardHeader>
-              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
-                <Store className="h-5 w-5 text-slate-700" />
-              </div>
+          <Link href="/pharmacies" className="group">
+            <Card className="h-full transition group-hover:-translate-y-1 group-hover:shadow-md">
+              <CardHeader>
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
+                  <MapPin className="h-5 w-5 text-slate-700" />
+                </div>
 
-              <CardTitle>Pharmacy Dashboard</CardTitle>
-            </CardHeader>
+                <CardTitle>Find Pharmacies</CardTitle>
+              </CardHeader>
 
-            <CardContent className="text-muted-foreground">
-              Pharmacy owners and staff can manage medicines, inventory, sales,
-              analytics, and subscriptions.
-            </CardContent>
-          </Card>
-        </Link>
+              <CardContent className="text-muted-foreground">
+                Browse pharmacies, view available medicines, prices, addresses,
+                opening hours, and contact information.
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/scan-prescription" className="group">
+            <Card className="h-full transition group-hover:-translate-y-1 group-hover:shadow-md">
+              <CardHeader>
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
+                  <ClipboardPlus className="h-5 w-5 text-slate-700" />
+                </div>
+
+                <CardTitle>Scan Prescription</CardTitle>
+              </CardHeader>
+
+              <CardContent className="text-muted-foreground">
+                Upload a prescription image and let SmartPharma help identify
+                medicines and available pharmacies.
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/cost-estimation" className="group">
+            <Card className="h-full transition group-hover:-translate-y-1 group-hover:shadow-md">
+              <CardHeader>
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
+                  <Calculator className="h-5 w-5 text-slate-700" />
+                </div>
+
+                <CardTitle>Cost Estimation</CardTitle>
+              </CardHeader>
+
+              <CardContent className="text-muted-foreground">
+                Estimate the total cost of the medicines you need before
+                visiting a pharmacy.
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/medicine-reminder" className="group">
+            <Card className="h-full transition group-hover:-translate-y-1 group-hover:shadow-md">
+              <CardHeader>
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
+                  <Pill className="h-5 w-5 text-slate-700" />
+                </div>
+
+                <CardTitle>Medicine Reminder</CardTitle>
+              </CardHeader>
+
+              <CardContent className="text-muted-foreground">
+                Create reminders to help you keep track of your medicine
+                schedule.
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/about-us" className="group">
+            <Card className="h-full transition group-hover:-translate-y-1 group-hover:shadow-md">
+              <CardHeader>
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
+                  <ArrowRight className="h-5 w-5 text-slate-700" />
+                </div>
+
+                <CardTitle>About SmartPharma</CardTitle>
+              </CardHeader>
+
+              <CardContent className="text-muted-foreground">
+                Learn more about SmartPharma, our mission, and how our platform
+                helps patients.
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
       </section>
 
-      {/* How it works */}
+      {/* How It Works */}
       <section className="border-t bg-white">
         <div className="mx-auto max-w-7xl px-6 py-16">
           <div className="max-w-2xl">
             <p className="text-sm font-semibold uppercase tracking-wider text-slate-500">
-              How SmartPharma works
+              How SmartPharma Works
             </p>
 
             <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-              Find what you need in a few steps.
+              Find what you need in a few simple steps.
             </h2>
+
+            <p className="mt-4 text-base leading-7 text-slate-600">
+              SmartPharma helps you move from searching for a medicine to
+              finding the right pharmacy information.
+            </p>
           </div>
 
           <div className="mt-10 grid gap-6 md:grid-cols-3">
@@ -205,7 +225,7 @@ export default function Home() {
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
                 See which pharmacies have the medicine available and compare
-                prices and stock.
+                prices and stock information.
               </p>
             </div>
 
@@ -219,7 +239,7 @@ export default function Home() {
               </h3>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                View the pharmacy address and contact information before
+                View the pharmacy location and contact information before
                 visiting.
               </p>
             </div>
@@ -227,12 +247,57 @@ export default function Home() {
         </div>
       </section>
 
+      {/* About / Contact CTA */}
+      <section className="border-t bg-slate-50">
+        <div className="mx-auto max-w-7xl px-6 py-16">
+          <div className="rounded-3xl bg-slate-900 px-7 py-10 text-white sm:px-10 sm:py-12">
+            <div className="max-w-3xl">
+              <p className="text-sm font-semibold uppercase tracking-wider text-slate-400">
+                SmartPharma
+              </p>
+
+              <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+                Making your medicine search simpler.
+              </h2>
+
+              <p className="mt-4 text-base leading-7 text-slate-300">
+                Learn more about SmartPharma or contact our support team if you
+                have questions, need assistance, or want to share feedback.
+              </p>
+
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <Link href="/about-us">
+                  <Button
+                    size="lg"
+                    variant="secondary"
+                    className="w-full sm:w-auto"
+                  >
+                    About SmartPharma
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+
+                <Link href="/contact-us">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full border-slate-600 bg-transparent text-white hover:bg-slate-800 hover:text-white sm:w-auto"
+                  >
+                    Contact Us
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="border-t bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} SmartPharma. All rights reserved.</p>
 
-          <div className="flex gap-5">
+          <div className="flex flex-wrap gap-5">
             <Link href="/" className="hover:text-slate-900">
               Home
             </Link>
@@ -243,6 +308,18 @@ export default function Home() {
 
             <Link href="/pharmacies" className="hover:text-slate-900">
               Pharmacies
+            </Link>
+
+            <Link href="/about-us" className="hover:text-slate-900">
+              About Us
+            </Link>
+
+            <Link href="/contact-us" className="hover:text-slate-900">
+              Contact Us
+            </Link>
+
+            <Link href="/pharmacy/login" className="hover:text-slate-900">
+              Pharmacy Login
             </Link>
           </div>
         </div>

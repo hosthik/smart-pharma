@@ -1,4 +1,7 @@
-import { Injectable } from "@nestjs/common";
+import {
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 @Injectable()
@@ -6,19 +9,31 @@ export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getDashboard(pharmacyId: number) {
+    const pharmacy = await this.prisma.pharmacy.findUnique({
+      where: {
+        id: pharmacyId,
+      },
+      include: {
+        subscription: true,
+      },
+    });
+
+    if (!pharmacy) {
+      throw new NotFoundException("Pharmacy not found.");
+    }
+
     const [
-      medicineCount,
-      availableCount,
-      lowStockCount,
-      outOfStockCount,
-      sales,
-      topSelling,
-      topDemand,
-      pharmacy,
-      subscription,
+      totalMedicines,
+      availableMedicines,
+      lowStockMedicines,
+      outOfStockMedicines,
+      totalInventoryUnits,
+      patientSearches,
     ] = await Promise.all([
       this.prisma.inventory.count({
-        where: { pharmacyId },
+        where: {
+          pharmacyId,
+        },
       }),
 
       this.prisma.inventory.count({
@@ -42,132 +57,48 @@ export class DashboardService {
         },
       }),
 
-      this.prisma.sale.aggregate({
-        where: { pharmacyId },
-        _sum: {
-          totalAmount: true,
-        },
-        _count: {
-          id: true,
-        },
-      }),
-
-      this.prisma.saleItem.groupBy({
-        by: ["medicineId"],
+      this.prisma.inventory.aggregate({
         where: {
-          sale: {
-            pharmacyId,
-          },
+          pharmacyId,
         },
         _sum: {
           quantity: true,
-          totalPrice: true,
-        },
-        orderBy: {
-          _sum: {
-            quantity: "desc",
-          },
-        },
-        take: 5,
-      }),
-
-      this.prisma.medicineSearch.groupBy({
-        by: ["medicineId"],
-        where: {
-          pharmacyId,
-        },
-        _count: {
-          medicineId: true,
-        },
-        orderBy: {
-          _count: {
-            medicineId: "desc",
-          },
-        },
-        take: 5,
-      }),
-
-      this.prisma.pharmacy.findUnique({
-        where: {
-          id: pharmacyId,
         },
       }),
 
-      this.prisma.subscription.findUnique({
-        where: {
-          pharmacyId,
-        },
-      }),
+      this.prisma.medicineSearch.count(),
     ]);
-
-    const topSellingWithNames = await Promise.all(
-      topSelling.map(async (item) => {
-        const medicine = await this.prisma.medicine.findUnique({
-          where: {
-            id: item.medicineId,
-          },
-        });
-
-        return {
-          medicine: medicine?.name,
-          quantity: item._sum.quantity ?? 0,
-          revenue: item._sum.totalPrice ?? 0,
-        };
-      }),
-    );
-
-    const demandWithNames = await Promise.all(
-      topDemand.map(async (item) => {
-        const medicine = await this.prisma.medicine.findUnique({
-          where: {
-            id: item.medicineId,
-          },
-        });
-
-        const inventory = await this.prisma.inventory.findUnique({
-          where: {
-            pharmacyId_medicineId: {
-              pharmacyId,
-              medicineId: item.medicineId,
-            },
-          },
-        });
-
-        return {
-          medicine: medicine?.name,
-          searches: item._count.medicineId,
-          supply: inventory?.quantity ?? 0,
-          stockStatus: inventory?.stockStatus ?? "OUT_OF_STOCK",
-        };
-      }),
-    );
 
     return {
       pharmacy: {
-        id: pharmacy?.id,
-        name: pharmacy?.name,
+        id: pharmacy.id,
+        name: pharmacy.name,
+        address: pharmacy.address,
+        phone: pharmacy.phone,
+        email: pharmacy.email,
+        verificationStatus:
+          pharmacy.verificationStatus,
       },
 
-      summary: {
-        medicines: medicineCount,
-        available: availableCount,
-        lowStock: lowStockCount,
-        outOfStock: outOfStockCount,
-        totalSales: sales._count.id,
-        totalRevenue: sales._sum.totalAmount ?? 0,
-      },
-
-      topSelling: topSellingWithNames,
-
-      demand: demandWithNames,
-
-      subscription: subscription
+      subscription: pharmacy.subscription
         ? {
-            plan: subscription.plan,
-            status: subscription.status,
-            renewalDate: subscription.renewalDate,
+            id: pharmacy.subscription.id,
+            plan: pharmacy.subscription.plan,
+            status: pharmacy.subscription.status,
+            startDate: pharmacy.subscription.startDate,
+            renewalDate: pharmacy.subscription.renewalDate,
           }
         : null,
+
+      summary: {
+        totalMedicines,
+        availableMedicines,
+        lowStockMedicines,
+        outOfStockMedicines,
+        totalInventoryUnits:
+          totalInventoryUnits._sum?.quantity ?? 0,
+        patientSearches,
+      },
     };
   }
 }
