@@ -46,7 +46,7 @@ const teamMembers = [
   },
   {
     name: "Fenet Habtamu",
-    roles: ["Vice Business Manager", "Admin"],
+    roles: ["Vice Business Manager", "Admin", "Vice Leader"],
     phone: "+251 94 693 8728",
     telegram: "https://t.me/Fefina46",
     telegramLabel: "@Fefina46",
