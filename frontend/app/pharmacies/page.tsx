@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import PatientNavigation from "@/components/patient/PatientNavigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
 type InventoryItem = {
   id: number;
   quantity: number;

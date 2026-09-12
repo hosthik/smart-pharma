@@ -3,8 +3,7 @@
 import { useState } from "react";
 import PatientNavigation from "@/components/patient/PatientNavigation";
 
-const API_URL = "http://localhost:4000";
-
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const categories = [
   "General Feedback",
   "Website Issue",

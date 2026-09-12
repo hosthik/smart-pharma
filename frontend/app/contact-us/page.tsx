@@ -29,12 +29,12 @@ const contactItems = [
 
 const teamMembers = [
   {
-    name: "Abdurehman Abdujewad",
+    name: "Abdurehman Abduljewad",
     roles: ["Group Leader", "Admin"],
     phone: "+251 98 461 7112",
     telegram: "https://t.me/secretlygently",
     telegramLabel: "@secretlygently",
-    image: "/images/team/abdurehman.jpg",
+    image: "/images/team/abdurahman.jpg",
   },
   {
     name: "Berekie Tilahun",
@@ -45,20 +45,20 @@ const teamMembers = [
     image: "/images/team/berekie.jpg",
   },
   {
-    name: "Fenet",
-    roles: ["Vice Business Manager", "Member", "Writer"],
-    phone: null,
+    name: "Fenet Habtamu",
+    roles: ["Vice Business Manager", "Writer"],
+    phone: "+251 94 693 8728",
     telegram: "https://t.me/Fefina46",
     telegramLabel: "@Fefina46",
     image: "/images/team/fenet.jpg",
   },
   {
     name: "Hosni Hassen",
-    roles: ["Manager of Backend", "Admin", "Coder"],
+    roles: ["Manager of Fullstack", "Admin"],
     phone: "0973985357",
     telegram: "https://t.me/hosthas",
     telegramLabel: "@hosthas",
-    image: "/images/team/hosni.jpg",
+    image: "/images/team/husni.jpg",
   },
 ];
 

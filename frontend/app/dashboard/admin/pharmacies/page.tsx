@@ -17,7 +17,6 @@ import AdminNavigation from "@/components/admin/AdminNavigation";
 import { getToken } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
 type VerificationStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 type Pharmacy = {

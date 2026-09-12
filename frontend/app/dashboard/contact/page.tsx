@@ -33,7 +33,7 @@ const teamMembers = [
     role: "Group Leader, Admin",
     phone: "+251 98 461 7112",
     telegram: "https://t.me/secretlygently",
-    image: "/images/team/abdurehman.jpg",
+    image: "/images/team/abdurahman.jpg",
   },
   {
     name: "Berekie Tilahun",
@@ -43,9 +43,9 @@ const teamMembers = [
     image: "/images/team/berekie.jpg",
   },
   {
-    name: "Fenet",
+    name: "Fenet Habtamu",
     role: "Vice Business Manager, Writer",
-    phone: null,
+    phone: "+251 94 693 8728",
     telegram: "https://t.me/Fefina46",
     image: "/images/team/fenet.jpg",
   },
@@ -54,7 +54,7 @@ const teamMembers = [
     role: "Backend Manager, Admin, Coder",
     phone: "0973985357",
     telegram: "https://t.me/hosthas",
-    image: "/images/team/hosni.jpg",
+    image: "/images/team/husni.jpg",
   },
 ];
 

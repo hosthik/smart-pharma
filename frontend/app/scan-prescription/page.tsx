@@ -46,6 +46,8 @@ type ScanResponse = {
   medicines?: MatchedMedicine[];
 };
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
 export default function ScanPrescriptionPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -114,7 +116,7 @@ export default function ScanPrescriptionPage() {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const response = await fetch("http://localhost:4000/prescription/scan", {
+      const response = await fetch(`${API_URL}/prescription/scan`, {
         method: "POST",
         body: formData,
       });

@@ -24,7 +24,6 @@ import PharmacyNavigation from "@/components/pharmacy/PharmacyNavigation";
 import { getPharmacyId, getToken, logout } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
 type PharmacyAccount = {
   id: number;
   name: string;

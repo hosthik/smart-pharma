@@ -19,8 +19,7 @@ import {
 
 import PatientNavigation from "@/components/patient/PatientNavigation";
 
-const API_URL = "http://localhost:4000";
-
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 type Medicine = {
   id: number;
   name: string;

@@ -8,8 +8,7 @@ import { ArrowRight, Lock, Mail, Store } from "lucide-react";
 
 import { getCurrentUser } from "@/lib/auth";
 
-const API_URL = "http://localhost:4000";
-
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 export default function PharmacyLoginPage() {
   const router = useRouter();
 

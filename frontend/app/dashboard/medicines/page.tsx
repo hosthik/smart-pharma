@@ -32,8 +32,7 @@ type MedicineSearchResult = Medicine & {
   pharmacies: PharmacyResult[];
 };
 
-const API_URL = "http://localhost:4000";
-
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 export default function MedicinesPage() {
   const [pharmacyId] = useState<number | null>(() => getPharmacyId());
 
