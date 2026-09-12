@@ -30,7 +30,7 @@ const contactItems = [
 const teamMembers = [
   {
     name: "Abdurehman Abduljewad",
-    roles: ["Group Leader", "Admin"],
+    roles: ["Leader", "Manager of Cyber Security", "Admin"],
     phone: "+251 98 461 7112",
     telegram: "https://t.me/secretlygently",
     telegramLabel: "@secretlygently",
@@ -38,7 +38,7 @@ const teamMembers = [
   },
   {
     name: "Berekie Tilahun",
-    roles: ["Vice Group Leader", "Business Manager"],
+    roles: ["Vice Leader", "Business Manager"],
     phone: "+251 96 004 2272",
     telegram: "https://t.me/+251960042272",
     telegramLabel: "Telegram",
