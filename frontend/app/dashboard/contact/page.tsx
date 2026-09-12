@@ -30,28 +30,28 @@ const contactItems = [
 const teamMembers = [
   {
     name: "Abdurehman Abduljewad",
-    role: "Group Leader, Admin",
+    role: ["Leader", "Manager of Cyber Security", "Admin"],
     phone: "+251 98 461 7112",
     telegram: "https://t.me/secretlygently",
     image: "/images/team/abdurahman.jpg",
   },
   {
     name: "Berekie Tilahun",
-    role: "Vice Group Leader, Business Manager",
+    role: "Vice Leader, Business Manager, Admin",
     phone: "+251 96 004 2272",
     telegram: "https://t.me/+251960042272",
     image: "/images/team/berekie.jpg",
   },
   {
     name: "Fenet Habtamu",
-    role: "Vice Business Manager, Writer",
+    role: "Vice Business Manager, Admin",
     phone: "+251 94 693 8728",
     telegram: "https://t.me/Fefina46",
     image: "/images/team/fenet.jpg",
   },
   {
     name: "Hosni Hassen",
-    role: "Backend Manager, Admin, Coder",
+    role: "Fullstack Manager, Admin, Coder and Vice Cyber Security Manager ",
     phone: "0973985357",
     telegram: "https://t.me/hosthas",
     image: "/images/team/husni.jpg",

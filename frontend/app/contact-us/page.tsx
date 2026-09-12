@@ -38,7 +38,7 @@ const teamMembers = [
   },
   {
     name: "Berekie Tilahun",
-    roles: ["Vice Leader", "Business Manager"],
+    roles: ["Vice Leader", "Business Manager, Admin"],
     phone: "+251 96 004 2272",
     telegram: "https://t.me/+251960042272",
     telegramLabel: "Telegram",
@@ -46,7 +46,7 @@ const teamMembers = [
   },
   {
     name: "Fenet Habtamu",
-    roles: ["Vice Business Manager", "Writer"],
+    roles: ["Vice Business Manager", "Admin"],
     phone: "+251 94 693 8728",
     telegram: "https://t.me/Fefina46",
     telegramLabel: "@Fefina46",
@@ -54,7 +54,11 @@ const teamMembers = [
   },
   {
     name: "Hosni Hassen",
-    roles: ["Manager of Fullstack", "Admin"],
+    roles: [
+      "Manager of Fullstack",
+      "Admin",
+      "Coder and Vice Cyber Security Manager",
+    ],
     phone: "0973985357",
     telegram: "https://t.me/hosthas",
     telegramLabel: "@hosthas",
